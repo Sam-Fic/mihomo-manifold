@@ -9,6 +9,7 @@ use std::rc::Rc;
 use crate::api::ClashApi;
 use crate::config::AppConfig;
 use crate::corectl::{self as core, CoreStatus};
+use crate::i18n::{t, tf};
 use crate::{paths, runtime, subscription, sysproxy, template};
 
 type Listener = Rc<dyn Fn(&Rc<AppState>)>;
@@ -25,8 +26,10 @@ pub struct AppState {
 
 impl AppState {
     pub fn new() -> Rc<Self> {
+        let config = AppConfig::load();
+        crate::i18n::apply_setting(&config.language);
         Rc::new(Self {
-            config: RefCell::new(AppConfig::load()),
+            config: RefCell::new(config),
             status: RefCell::new(CoreStatus::Stopped),
             core_version: RefCell::new(None),
             listeners: RefCell::new(Vec::new()),
@@ -68,7 +71,7 @@ impl AppState {
 
     pub fn save(self: &Rc<Self>) {
         if let Err(err) = self.config.borrow().save() {
-            self.toast(&format!("Could not save settings: {err}"));
+            self.toast(&tf("Could not save settings: {}", &[&err]));
         }
     }
 
@@ -97,13 +100,13 @@ impl AppState {
 pub fn active_proxies(state: &Rc<AppState>) -> Result<Vec<serde_yaml::Value>, String> {
     let cfg = state.config.borrow();
     let Some(sub) = cfg.active() else {
-        return Err("Add a subscription first.".to_string());
+        return Err(t("Add a subscription first.").to_string());
     };
     match subscription::load_cached(sub) {
         Some(proxies) if !proxies.is_empty() => Ok(proxies),
-        _ => Err(format!(
+        _ => Err(tf(
             "No downloaded profile for \"{}\" yet — update it first.",
-            sub.name
+            &[&sub.name],
         )),
     }
 }
@@ -126,7 +129,7 @@ pub fn apply(state: &Rc<AppState>) {
 
     if state.is_running() {
         if let Err(err) = paths::write_private(&paths::generated_config(), &yaml) {
-            state.toast(&format!("Could not write the config: {err}"));
+            state.toast(&tf("Could not write the config: {}", &[&err]));
             return;
         }
         let Some(api) = state.api() else { return };
@@ -137,14 +140,14 @@ pub fn apply(state: &Rc<AppState>) {
             move |result| {
                 match result {
                     Ok(()) => {
-                        state.toast("Configuration reloaded");
+                        state.toast(t("Configuration reloaded"));
                         // The pages read proxies from the core, so they have to
                         // query it again. refresh_status alone would not do it:
                         // it only redraws when the status itself changed, and a
                         // reload leaves the core exactly as running as it was.
                         state.notify();
                     }
-                    Err(err) => state.toast(&format!("Reload failed: {err}")),
+                    Err(err) => state.toast(&tf("Reload failed: {}", &[&err])),
                 }
                 // The mode may have just changed from tunnel to proxy-only.
                 sync_system_proxy(&state);
@@ -174,7 +177,7 @@ pub fn apply(state: &Rc<AppState>) {
     runtime::spawn(
         async move {
             let Some(api) = api else {
-                return Err("controller unreachable".to_string());
+                return Err(t("controller unreachable").to_string());
             };
             for _ in 0..40 {
                 if let Ok(version) = api.version().await {
@@ -182,21 +185,21 @@ pub fn apply(state: &Rc<AppState>) {
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(250)).await;
             }
-            Err("the core did not answer on the controller port".to_string())
+            Err(t("the core did not answer on the controller port").to_string())
         },
         move |result| match result {
             Ok(version) => {
                 *state.status.borrow_mut() = CoreStatus::Running;
                 *state.core_version.borrow_mut() = Some(version);
                 sync_system_proxy(&state);
-                state.toast("Core started");
+                state.toast(t("Core started"));
                 state.notify();
             }
             Err(err) => {
                 let tail = core::tail_log(12);
                 core::stop();
                 *state.status.borrow_mut() = CoreStatus::Failed(err.clone());
-                state.toast(&format!("{err}. Check the Logs page."));
+                state.toast(&tf("{}. Check the Logs page.", &[&err]));
                 if !tail.is_empty() {
                     eprintln!("mihomo-manifold: core log tail:\n{tail}");
                 }
@@ -221,7 +224,9 @@ pub fn sync_system_proxy(state: &Rc<AppState>) {
 
     if wanted {
         if !sysproxy::set(&host, port) {
-            state.toast("This desktop has no proxy settings to write (gsettings schema missing).");
+            state.toast(t(
+                "This desktop has no proxy settings to write (gsettings schema missing).",
+            ));
         }
     } else if sysproxy::points_at(&host, port) {
         sysproxy::clear();
@@ -273,7 +278,7 @@ pub fn update_subscription(state: &Rc<AppState>, id: &str, then_apply: bool) {
         (sub.clone(), cfg.hwid.clone())
     };
 
-    state.toast(&format!("Updating \"{}\"…", sub.name));
+    state.toast(&tf("Updating \"{}\"…", &[&sub.name]));
     let state = state.clone();
     let id = id.to_string();
     runtime::spawn(
@@ -304,7 +309,7 @@ pub fn update_subscription(state: &Rc<AppState>, id: &str, then_apply: bool) {
             }
             match result {
                 Ok(fetched) => {
-                    state.toast(&format!("{} nodes downloaded", fetched.proxies.len()));
+                    state.toast(&tf("{} nodes downloaded", &[&fetched.proxies.len()]));
                     state.commit();
                     // Downloading only refreshes the file on disk. The core is
                     // still serving the nodes it was started with, so without a
@@ -322,7 +327,7 @@ pub fn update_subscription(state: &Rc<AppState>, id: &str, then_apply: bool) {
                     show_device_limit(&state, &message);
                 }
                 Err(err) => {
-                    state.toast(&format!("Update failed: {err}"));
+                    state.toast(&tf("Update failed: {}", &[&err]));
                     state.commit();
                 }
             }
@@ -334,19 +339,20 @@ pub fn update_subscription(state: &Rc<AppState>, id: &str, then_apply: bool) {
 fn show_device_limit(state: &Rc<AppState>, message: &str) {
     let hwid = state.config.borrow().hwid.value();
     let dialog = adw::AlertDialog::builder()
-        .heading("Device slot rejected")
-        .body(format!(
-            "{message}\n\nThis machine identifies itself as:\n{hwid}\n\nFree a slot in the panel, or set a different HWID in Settings."
+        .heading(t("Device slot rejected"))
+        .body(tf(
+            "{}\n\nThis machine identifies itself as:\n{}\n\nFree a slot in the panel, or set a different HWID in Settings.",
+            &[&message, &hwid],
         ))
         .build();
-    dialog.add_response("close", "Close");
-    dialog.add_response("settings", "Open Settings");
+    dialog.add_response("close", t("Close"));
+    dialog.add_response("settings", t("Open Settings"));
     dialog.set_response_appearance("settings", adw::ResponseAppearance::Suggested);
 
     let state_for_response = state.clone();
     dialog.connect_response(None, move |_, response| {
         if response == "settings" {
-            state_for_response.toast("Settings → Device identity");
+            state_for_response.toast(t("Settings → Device identity"));
         }
     });
 

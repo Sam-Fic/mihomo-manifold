@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use crate::config::HwidMode;
 use crate::corectl;
+use crate::i18n::{self, t};
 use crate::resolver;
 use crate::runtime;
 use crate::state::{self, AppState};
@@ -36,12 +37,12 @@ fn preview_config(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
         .build();
     view.buffer().set_text(&yaml);
 
-    let (dialog, confirm) = widgets::form_dialog("Generated config.yaml", "Copy", &view);
+    let (dialog, confirm) = widgets::form_dialog(t("Generated config.yaml"), t("Copy"), &view);
     let copy_target = view.clone();
     let copy_state = state.clone();
     confirm.connect_clicked(move |_| {
         widgets::copy_to_clipboard(&copy_target, &widgets::text_of(&copy_target));
-        copy_state.toast("Copied to clipboard");
+        copy_state.toast(t("Copied to clipboard"));
     });
     dialog.present(Some(parent.as_ref()));
 }
@@ -52,17 +53,57 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
     state.subscribe(move |state| {
         widgets::clear(&content);
 
-        // ---------------------------------------------------------- core
-        let core_group = adw::PreferencesGroup::builder()
-            .title("Core")
-            .description("Changes take effect the next time you apply the configuration.")
+        // -------------------------------------------------------- interface
+        let interface_group = adw::PreferencesGroup::builder()
+            .title(t("Appearance"))
             .build();
 
-        let binary = adw::EntryRow::builder().title("mihomo binary").build();
+        // The option labels stay in their own language on purpose: someone
+        // stuck in the wrong language must still recognise "简体中文".
+        let language = adw::ComboRow::builder()
+            .title(t("Language"))
+            .subtitle(t("Applies immediately to every page."))
+            .model(&widgets::string_list(&[
+                t("Follow system"),
+                "English",
+                "简体中文",
+            ]))
+            .build();
+        language.set_selected(match state.config.borrow().language.as_str() {
+            "en" => 1,
+            "zh" => 2,
+            _ => 0,
+        });
+        let language_state = state.clone();
+        language.connect_selected_notify(move |combo| {
+            if language_state.is_refreshing() {
+                return;
+            }
+            let picked = ["auto", "en", "zh"]
+                .get(combo.selected() as usize)
+                .copied()
+                .unwrap_or("auto");
+            language_state.config.borrow_mut().language = picked.to_string();
+            // Switch before the pages redraw, or they retranslate with the old one.
+            i18n::apply_setting(picked);
+            language_state.commit();
+        });
+        interface_group.add(&language);
+        content.append(&interface_group);
+
+        // ---------------------------------------------------------- core
+        let core_group = adw::PreferencesGroup::builder()
+            .title(t("Core"))
+            .description(t(
+                "Changes take effect the next time you apply the configuration.",
+            ))
+            .build();
+
+        let binary = adw::EntryRow::builder().title(t("mihomo binary")).build();
         binary.set_text(&state.config.borrow().core.binary);
         let resolved = state.config.borrow().core.resolve_binary();
         let binary_hint = adw::ActionRow::builder()
-            .title("Resolved to")
+            .title(t("Resolved to"))
             .subtitle(&resolved)
             .build();
         binary_hint.add_css_class("property");
@@ -78,8 +119,8 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         core_group.add(&binary_hint);
 
         let mixed_port = adw::SpinRow::with_range(1.0, 65535.0, 1.0);
-        mixed_port.set_title("Mixed proxy port");
-        mixed_port.set_subtitle("HTTP and SOCKS on one port");
+        mixed_port.set_title(t("Mixed proxy port"));
+        mixed_port.set_subtitle(t("HTTP and SOCKS on one port"));
         mixed_port.set_value(state.config.borrow().core.mixed_port as f64);
         let port_state = state.clone();
         mixed_port.connect_value_notify(move |row| {
@@ -92,13 +133,17 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         core_group.add(&mixed_port);
 
         let system_proxy = adw::SwitchRow::builder()
-            .title("Publish as system proxy")
-            .subtitle("In proxy-only mode, point the desktop's proxy settings at the port")
+            .title(t("Publish as system proxy"))
+            .subtitle(t(
+                "In proxy-only mode, point the desktop's proxy settings at the port",
+            ))
             .sensitive(sysproxy::is_available())
             .build();
         system_proxy.set_active(state.config.borrow().core.set_system_proxy);
         if !sysproxy::is_available() {
-            system_proxy.set_subtitle("Unavailable: this session has no org.gnome.system.proxy schema");
+            system_proxy.set_subtitle(t(
+                "Unavailable: this session has no org.gnome.system.proxy schema",
+            ));
         }
         let system_proxy_state = state.clone();
         system_proxy.connect_active_notify(move |row| {
@@ -117,15 +162,15 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
             .iter()
             .map(|f| {
                 if f.is_empty() {
-                    "As the subscription says".to_string()
+                    t("As the subscription says").to_string()
                 } else {
                     f.to_string()
                 }
             })
             .collect();
         let fingerprint = adw::ComboRow::builder()
-            .title("TLS fingerprint")
-            .subtitle("What every node pretends to be during the handshake")
+            .title(t("TLS fingerprint"))
+            .subtitle(t("What every node pretends to be during the handshake"))
             .model(&widgets::string_list(&fingerprint_labels))
             .build();
         let current_fingerprint = state.config.borrow().core.client_fingerprint.clone();
@@ -150,8 +195,8 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         core_group.add(&fingerprint);
 
         let controller_port = adw::SpinRow::with_range(1.0, 65535.0, 1.0);
-        controller_port.set_title("Controller port");
-        controller_port.set_subtitle("Where the GUI talks to the core");
+        controller_port.set_title(t("Controller port"));
+        controller_port.set_subtitle(t("Where the GUI talks to the core"));
         controller_port.set_value(state.config.borrow().core.controller_port as f64);
         let controller_state = state.clone();
         controller_port.connect_value_notify(move |row| {
@@ -164,16 +209,18 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         core_group.add(&controller_port);
 
         let secret = adw::PasswordEntryRow::builder()
-            .title("Controller secret")
+            .title(t("Controller secret"))
             .build();
         secret.set_text(&state.config.borrow().core.secret);
-        let regenerate = widgets::icon_button("view-refresh-symbolic", "Generate a new secret");
+        let regenerate = widgets::icon_button("view-refresh-symbolic", t("Generate a new secret"));
         let regenerate_state = state.clone();
         regenerate.connect_clicked(move |_| {
             regenerate_state.config.borrow_mut().core.secret =
                 uuid::Uuid::new_v4().simple().to_string();
             regenerate_state.commit();
-            regenerate_state.toast("New secret generated — restart the core to use it.");
+            regenerate_state.toast(t(
+                "New secret generated — restart the core to use it.",
+            ));
         });
         secret.add_suffix(&regenerate);
         let secret_state = state.clone();
@@ -187,7 +234,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         core_group.add(&secret);
 
         let log_level = adw::ComboRow::builder()
-            .title("Log level")
+            .title(t("Log level"))
             .model(&widgets::string_list(&LOG_LEVELS))
             .build();
         let current_level = state.config.borrow().core.log_level.clone();
@@ -206,8 +253,8 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         core_group.add(&log_level);
 
         let allow_lan = adw::SwitchRow::builder()
-            .title("Allow LAN")
-            .subtitle("Let other machines use this proxy port")
+            .title(t("Allow LAN"))
+            .subtitle(t("Let other machines use this proxy port"))
             .build();
         allow_lan.set_active(state.config.borrow().core.allow_lan);
         let lan_state = state.clone();
@@ -220,7 +267,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         });
         core_group.add(&allow_lan);
 
-        let ipv6 = adw::SwitchRow::builder().title("IPv6").build();
+        let ipv6 = adw::SwitchRow::builder().title(t("IPv6")).build();
         ipv6.set_active(state.config.borrow().core.ipv6);
         let ipv6_state = state.clone();
         ipv6.connect_active_notify(move |row| {
@@ -233,7 +280,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         core_group.add(&ipv6);
 
         let autostart = adw::SwitchRow::builder()
-            .title("Start the core when the app opens")
+            .title(t("Start the core when the app opens"))
             .build();
         autostart.set_active(state.config.borrow().core.autostart_core);
         let autostart_state = state.clone();
@@ -250,11 +297,13 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         // ---------------------------------------------------------- tun
         let tun_group = adw::PreferencesGroup::builder()
             .title("TUN")
-            .description("Required for routing by application and for UDP traffic.")
+            .description(t(
+                "Required for routing by application and for UDP traffic.",
+            ))
             .build();
 
         let tun_enabled = adw::SwitchRow::builder()
-            .title("Capture all traffic (TUN)")
+            .title(t("Capture all traffic (TUN)"))
             .build();
         tun_enabled.set_active(state.config.borrow().core.tun_enabled);
         let tun_state = state.clone();
@@ -268,7 +317,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         tun_group.add(&tun_enabled);
 
         let capability_row = adw::ActionRow::builder()
-            .title("Privileges")
+            .title(t("Privileges"))
             .subtitle(corectl::tun_readiness(&resolved).describe())
             .build();
         capability_row.add_css_class("property");
@@ -280,11 +329,10 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         // the password on every single start.
         if resolver::applies() {
             let resolver_auth = adw::SwitchRow::builder()
-                .title("Start the core without a password prompt")
-                .subtitle(
-                    "Install a polkit rule for the three systemd-resolved actions TUN needs. \
-                     Without it every start asks for your password three times.",
-                )
+                .title(t("Start the core without a password prompt"))
+                .subtitle(t(
+                    "Install a polkit rule for the three systemd-resolved actions TUN needs. Without it every start asks for your password three times.",
+                ))
                 .build();
             resolver_auth.set_active(resolver::installed());
             let auth_state = state.clone();
@@ -310,9 +358,9 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
                     move |(wanted, outcome)| {
                         match &outcome {
                             Ok(()) => done_state.toast(if wanted {
-                                "Rule installed — the core will start without asking."
+                                t("Rule installed — the core will start without asking.")
                             } else {
-                                "Rule removed — starting the core will ask for your password."
+                                t("Rule removed — starting the core will ask for your password.")
                             }),
                             Err(err) => {
                                 done_state.toast(&err.to_string());
@@ -329,7 +377,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         }
 
         let stack = adw::ComboRow::builder()
-            .title("Network stack")
+            .title(t("Network stack"))
             .model(&widgets::string_list(&TUN_STACKS))
             .build();
         let current_stack = state.config.borrow().core.tun_stack.clone();
@@ -348,8 +396,10 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         tun_group.add(&stack);
 
         let bypass = adw::SwitchRow::builder()
-            .title("Keep local networks off the tunnel")
-            .subtitle("Adds a private-IP and .local/.lan bypass above your destination rules")
+            .title(t("Keep local networks off the tunnel"))
+            .subtitle(t(
+                "Adds a private-IP and .local/.lan bypass above your destination rules",
+            ))
             .build();
         bypass.set_active(state.config.borrow().core.bypass_private);
         let bypass_state = state.clone();
@@ -363,8 +413,10 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         tun_group.add(&bypass);
 
         let fake_ip = adw::SwitchRow::builder()
-            .title("fake-ip DNS")
-            .subtitle("Faster and needed for reliable domain rules under TUN")
+            .title(t("fake-ip DNS"))
+            .subtitle(t(
+                "Faster and needed for reliable domain rules under TUN",
+            ))
             .build();
         fake_ip.set_active(state.config.borrow().core.fake_ip);
         let fake_ip_state = state.clone();
@@ -380,15 +432,17 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
 
         // ---------------------------------------------------------- identity
         let identity_group = adw::PreferencesGroup::builder()
-            .title("Device identity")
-            .description("Sent with every subscription request. Panels that enforce a device limit count these.")
+            .title(t("Device identity"))
+            .description(t(
+                "Sent with every subscription request. Panels that enforce a device limit count these.",
+            ))
             .build();
 
         let mode = adw::ComboRow::builder()
-            .title("HWID source")
+            .title(t("HWID source"))
             .model(&widgets::string_list(&[
-                "Derived from /etc/machine-id",
-                "Entered manually",
+                t("Derived from /etc/machine-id"),
+                t("Entered manually"),
             ]))
             .build();
         mode.set_selected(match state.config.borrow().hwid.mode {
@@ -411,22 +465,22 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
 
         let value = state.config.borrow().hwid.value();
         let value_row = adw::ActionRow::builder()
-            .title("Current HWID")
+            .title(t("Current HWID"))
             .subtitle(&value)
             .build();
         value_row.add_css_class("property");
-        let copy = widgets::icon_button("edit-copy-symbolic", "Copy");
+        let copy = widgets::icon_button("edit-copy-symbolic", t("Copy"));
         let copy_value = value.clone();
         let copy_state = state.clone();
         copy.connect_clicked(move |button| {
             widgets::copy_to_clipboard(button, &copy_value);
-            copy_state.toast("HWID copied");
+            copy_state.toast(t("HWID copied"));
         });
         value_row.add_suffix(&copy);
         identity_group.add(&value_row);
 
         if state.config.borrow().hwid.mode == HwidMode::Manual {
-            let manual = adw::EntryRow::builder().title("HWID").build();
+            let manual = adw::EntryRow::builder().title(t("HWID")).build();
             manual.set_text(&state.config.borrow().hwid.manual);
             let manual_state = state.clone();
             manual.connect_changed(move |entry| {
@@ -439,7 +493,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
             identity_group.add(&manual);
         }
 
-        let device_os = adw::EntryRow::builder().title("x-device-os").build();
+        let device_os = adw::EntryRow::builder().title(t("x-device-os")).build();
         device_os.set_text(&state.config.borrow().hwid.device_os);
         let device_os_state = state.clone();
         device_os.connect_changed(move |entry| {
@@ -451,7 +505,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         });
         identity_group.add(&device_os);
 
-        let ver_os = adw::EntryRow::builder().title("x-ver-os").build();
+        let ver_os = adw::EntryRow::builder().title(t("x-ver-os")).build();
         ver_os.set_text(&state.config.borrow().hwid.effective_ver_os());
         let ver_os_state = state.clone();
         ver_os.connect_changed(move |entry| {
@@ -463,7 +517,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         });
         identity_group.add(&ver_os);
 
-        let model = adw::EntryRow::builder().title("x-device-model").build();
+        let model = adw::EntryRow::builder().title(t("x-device-model")).build();
         model.set_text(&state.config.borrow().hwid.effective_device_model());
         let model_state = state.clone();
         model.connect_changed(move |entry| {
@@ -475,7 +529,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         });
         identity_group.add(&model);
 
-        let user_agent = adw::EntryRow::builder().title("User-Agent").build();
+        let user_agent = adw::EntryRow::builder().title(t("User-Agent")).build();
         user_agent.set_text(&state.config.borrow().hwid.effective_user_agent());
         let ua_state = state.clone();
         user_agent.connect_changed(move |entry| {
@@ -489,11 +543,13 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         content.append(&identity_group);
 
         // ---------------------------------------------------------- advanced
-        let advanced = adw::PreferencesGroup::builder().title("Advanced").build();
+        let advanced = adw::PreferencesGroup::builder()
+            .title(t("Advanced"))
+            .build();
 
         let preview = adw::ActionRow::builder()
-            .title("Preview generated config.yaml")
-            .subtitle("Exactly what the core is fed")
+            .title(t("Preview generated config.yaml"))
+            .subtitle(t("Exactly what the core is fed"))
             .activatable(true)
             .build();
         preview.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
@@ -503,7 +559,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         advanced.add(&preview);
 
         let locations = adw::ActionRow::builder()
-            .title("Files")
+            .title(t("Files"))
             .subtitle(format!(
                 "{}\n{}",
                 crate::paths::config_file().display(),

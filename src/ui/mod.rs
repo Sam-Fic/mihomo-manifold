@@ -12,6 +12,7 @@ mod widgets;
 use adw::prelude::*;
 use gtk::glib;
 
+use crate::i18n::t;
 use crate::state::{self, AppState};
 
 pub fn build_window(app: &adw::Application) {
@@ -30,42 +31,56 @@ pub fn build_window(app: &adw::Application) {
     state.attach_toaster(&toaster);
 
     let stack = adw::ViewStack::new();
-    stack.add_titled_with_icon(
-        &dashboard::page(&state),
-        Some("dashboard"),
+    // Keep the pages around so a language change can retitle them; the page
+    // *contents* rebuild themselves through the usual subscribe mechanism.
+    let mut titled_pages = Vec::new();
+    let mut add_page = |child: gtk::Widget, id: &str, title: &'static str, icon: &str| {
+        let page = stack.add_titled_with_icon(&child, Some(id), t(title), icon);
+        titled_pages.push((page, title));
+    };
+    add_page(
+        dashboard::page(&state),
+        "dashboard",
         "Dashboard",
         "network-transmit-receive-symbolic",
     );
-    stack.add_titled_with_icon(
-        &proxies::page(&state),
-        Some("proxies"),
+    add_page(
+        proxies::page(&state),
+        "proxies",
         "Nodes",
         "network-workgroup-symbolic",
     );
-    stack.add_titled_with_icon(
-        &routing::page(&state),
-        Some("routing"),
+    add_page(
+        routing::page(&state),
+        "routing",
         "Routing",
         "document-properties-symbolic",
     );
-    stack.add_titled_with_icon(
-        &subscriptions::page(&state),
-        Some("subscriptions"),
+    add_page(
+        subscriptions::page(&state),
+        "subscriptions",
         "Subscriptions",
         "folder-download-symbolic",
     );
-    stack.add_titled_with_icon(
-        &logs::page(&state),
-        Some("logs"),
+    add_page(
+        logs::page(&state),
+        "logs",
         "Logs",
         "utilities-terminal-symbolic",
     );
-    stack.add_titled_with_icon(
-        &settings::page(&state),
-        Some("settings"),
+    add_page(
+        settings::page(&state),
+        "settings",
         "Settings",
         "emblem-system-symbolic",
     );
+
+    let retitled = titled_pages;
+    state.subscribe(move |_state| {
+        for (page, title) in &retitled {
+            page.set_title(Some(t(title)));
+        }
+    });
 
     let header = adw::HeaderBar::new();
     let switcher = adw::ViewSwitcher::builder()

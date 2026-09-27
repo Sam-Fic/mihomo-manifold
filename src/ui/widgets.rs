@@ -3,6 +3,7 @@
 use adw::prelude::*;
 
 use crate::config::Target;
+use crate::i18n::t;
 
 pub fn icon_button(icon: &str, tooltip: &str) -> gtk::Button {
     let button = gtk::Button::from_icon_name(icon);
@@ -116,7 +117,7 @@ pub fn form_dialog(
     header.set_show_end_title_buttons(false);
     header.set_show_start_title_buttons(false);
 
-    let cancel = gtk::Button::with_label("Cancel");
+    let cancel = gtk::Button::with_label(t("Cancel"));
     let confirm = gtk::Button::with_label(confirm_label);
     confirm.add_css_class("suggested-action");
     header.pack_start(&cancel);
@@ -147,11 +148,11 @@ pub fn copy_to_clipboard(widget: &impl IsA<gtk::Widget>, text: &str) {
 /// `1789000000` → `2026-09-05`; 0 means the panel reported no expiry.
 pub fn format_expiry(unix_seconds: i64) -> String {
     if unix_seconds <= 0 {
-        return "no expiry".to_string();
+        return t("no expiry").to_string();
     }
     match chrono::DateTime::from_timestamp(unix_seconds, 0) {
         Some(dt) => dt.format("%Y-%m-%d").to_string(),
-        None => "unknown".to_string(),
+        None => t("unknown").to_string(),
     }
 }
 
@@ -161,7 +162,7 @@ pub fn format_timestamp(unix_seconds: i64) -> String {
             let local: chrono::DateTime<chrono::Local> = dt.into();
             local.format("%Y-%m-%d %H:%M").to_string()
         }
-        None => "never".to_string(),
+        None => t("never").to_string(),
     }
 }
 

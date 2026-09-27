@@ -9,6 +9,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 
 use crate::config::AppConfig;
+use crate::i18n::{t, tf};
 use crate::paths;
 
 static CHILD: Mutex<Option<Child>> = Mutex::new(None);
@@ -47,26 +48,28 @@ impl TunReadiness {
     pub fn warning(&self) -> Option<String> {
         match self {
             TunReadiness::Ready | TunReadiness::Unknown => None,
-            TunReadiness::Missing(binary) => Some(format!(
-                "TUN is on but no core binary was found at {binary}. Set its path in Settings."
+            TunReadiness::Missing(binary) => Some(tf(
+                "TUN is on but no core binary was found at {}. Set its path in Settings.",
+                &[binary],
             )),
-            TunReadiness::NotPermitted(path) => Some(format!(
-                "TUN is on and {path} is set up correctly, but this session may not run it. \
-                 Log out and back in so the mihomo group applies."
+            TunReadiness::NotPermitted(path) => Some(tf(
+                "TUN is on and {} is set up correctly, but this session may not run it. Log out and back in so the mihomo group applies.",
+                &[path],
             )),
-            TunReadiness::NoCapabilities(path) => Some(format!(
-                "TUN is on but {path} has no CAP_NET_ADMIN. \
-                 Enable programs.mihomo-manifold.tun in your NixOS configuration."
+            TunReadiness::NoCapabilities(path) => Some(tf(
+                "TUN is on but {} has no CAP_NET_ADMIN. Enable programs.mihomo-manifold.tun in your NixOS configuration.",
+                &[path],
             )),
         }
     }
 
     pub fn describe(&self) -> String {
         match self {
-            TunReadiness::Ready => "The core binary can create the TUN device.".to_string(),
-            TunReadiness::Unknown => {
-                "getcap is not installed, so privileges could not be checked.".to_string()
-            }
+            TunReadiness::Ready => t("The core binary can create the TUN device.").to_string(),
+            TunReadiness::Unknown => t(
+                "getcap is not installed, so privileges could not be checked.",
+            )
+            .to_string(),
             _ => format!("⚠ {}", self.warning().unwrap_or_default()),
         }
     }
@@ -151,8 +154,12 @@ pub fn start(cfg: &AppConfig, generated_yaml: &str) -> Result<()> {
     }
 
     let binary = cfg.core.resolve_binary();
-    let resolved = which(&binary)
-        .ok_or_else(|| anyhow!("mihomo binary not found: {binary}\nSet its path in Settings."))?;
+    let resolved = which(&binary).ok_or_else(|| {
+        anyhow!(tf(
+            "mihomo binary not found: {}\nSet its path in Settings.",
+            &[&binary],
+        ))
+    })?;
 
     let log = std::fs::OpenOptions::new()
         .create(true)
