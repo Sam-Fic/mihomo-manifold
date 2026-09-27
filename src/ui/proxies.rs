@@ -5,6 +5,7 @@ use adw::prelude::*;
 use std::rc::Rc;
 
 use crate::api::{ClashApi, ProxiesResponse};
+use crate::i18n::{t, tf};
 use crate::runtime;
 use crate::state::AppState;
 use crate::ui::widgets;
@@ -59,8 +60,8 @@ fn populate(state: &Rc<AppState>, container: &gtk::Box, response: ProxiesRespons
 
     if group_names.is_empty() {
         container.append(&placeholder(
-            "No proxy groups",
-            "The core is running but reports no groups. Apply the configuration first.",
+            t("No proxy groups"),
+            t("The core is running but reports no groups. Apply the configuration first."),
         ));
         return;
     }
@@ -72,10 +73,10 @@ fn populate(state: &Rc<AppState>, container: &gtk::Box, response: ProxiesRespons
 
         let prefs = adw::PreferencesGroup::builder()
             .title(&group_name)
-            .description(format!("{} · {} nodes", group.kind, group.all.len()))
+            .description(tf("{} · {} nodes", &[&group.kind, &group.all.len()]))
             .build();
 
-        let test = widgets::action_button("view-refresh-symbolic", "Test");
+        let test = widgets::action_button("view-refresh-symbolic", t("Test"));
         let test_state = state.clone();
         let test_group = group_name.clone();
         test.connect_clicked(move |button| {
@@ -94,7 +95,7 @@ fn populate(state: &Rc<AppState>, container: &gtk::Box, response: ProxiesRespons
                     button.set_sensitive(true);
                     match result {
                         Ok(_) => state.notify(),
-                        Err(err) => state.toast(&format!("Latency test failed: {err}")),
+                        Err(err) => state.toast(&tf("Latency test failed: {}", &[&err])),
                     }
                 },
             );
@@ -105,7 +106,7 @@ fn populate(state: &Rc<AppState>, container: &gtk::Box, response: ProxiesRespons
             let info = response.proxies.get(member);
             let subtitle = info
                 .map(|i| i.kind.clone())
-                .unwrap_or_else(|| "unknown".to_string());
+                .unwrap_or_else(|| t("unknown").to_string());
 
             let row = adw::ActionRow::builder()
                 .title(glib_escape(member))
@@ -145,7 +146,7 @@ fn populate(state: &Rc<AppState>, container: &gtk::Box, response: ProxiesRespons
                     async move { api.select(&group, &member).await.map_err(|e| e.to_string()) },
                     move |result| match result {
                         Ok(()) => state.notify(),
-                        Err(err) => state.toast(&format!("Could not switch node: {err}")),
+                        Err(err) => state.toast(&tf("Could not switch node: {}", &[&err])),
                     },
                 );
             });
@@ -169,8 +170,8 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         if !state.is_running() {
             widgets::clear(&content);
             content.append(&placeholder(
-                "Core is not running",
-                "Start the core on the Dashboard to browse and switch nodes.",
+                t("Core is not running"),
+                t("Start the core on the Dashboard to browse and switch nodes."),
             ));
             return;
         }
@@ -184,7 +185,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
                 Ok(response) => populate(&state, &content, response),
                 Err(err) => {
                     widgets::clear(&content);
-                    content.append(&placeholder("Controller unreachable", &err));
+                    content.append(&placeholder(t("Controller unreachable"), &err));
                 }
             },
         );

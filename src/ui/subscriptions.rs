@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use crate::api::format_bytes;
 use crate::config::Subscription;
+use crate::i18n::{t, tf};
 use crate::state::{self, AppState};
 use crate::ui::widgets;
 
@@ -50,44 +51,50 @@ fn editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>, existing: Option
         .build();
 
     let general = adw::PreferencesGroup::new();
-    let name = adw::EntryRow::builder().title("Name").build();
+    let name = adw::EntryRow::builder().title(t("Name")).build();
     name.set_text(&subscription.name);
-    let url = adw::EntryRow::builder().title("Subscription URL").build();
+    let url = adw::EntryRow::builder().title(t("Subscription URL")).build();
     url.set_text(&subscription.url);
     general.add(&name);
     general.add(&url);
     content.append(&general);
 
     let identity = adw::PreferencesGroup::builder()
-        .title("Device identity")
-        .description("Sends x-hwid, x-device-os, x-ver-os and x-device-model with the request, the way Remnawave counts devices.")
+        .title(t("Device identity"))
+        .description(t(
+            "Sends x-hwid, x-device-os, x-ver-os and x-device-model with the request, the way Remnawave counts devices.",
+        ))
         .build();
-    let send_hwid = adw::SwitchRow::builder().title("Send HWID headers").build();
+    let send_hwid = adw::SwitchRow::builder()
+        .title(t("Send HWID headers"))
+        .build();
     send_hwid.set_active(subscription.send_hwid);
     identity.add(&send_hwid);
 
     let current_hwid = state.config.borrow().hwid.value();
     let hwid_row = adw::ActionRow::builder()
-        .title("This device")
+        .title(t("This device"))
         .subtitle(&current_hwid)
         .build();
     hwid_row.add_css_class("property");
     identity.add(&hwid_row);
     content.append(&identity);
 
-    let update = adw::PreferencesGroup::builder().title("Updates").build();
+    let update = adw::PreferencesGroup::builder()
+        .title(t("Updates"))
+        .build();
     let interval = adw::SpinRow::with_range(0.0, 10080.0, 30.0);
-    interval.set_title("Auto-update interval");
-    interval.set_subtitle("Minutes; 0 disables automatic updates");
+    interval.set_title(t("Auto-update interval"));
+    interval.set_subtitle(t("Minutes; 0 disables automatic updates"));
     interval.set_value(subscription.auto_update_minutes as f64);
     update.add(&interval);
     content.append(&update);
 
     let headers_group = adw::PreferencesGroup::builder()
-        .title("Extra headers")
-        .description(
+        .title(t("Extra headers"))
+        .description(t(
             "One per line as `Key: value`. `{hwid}` is replaced with this device's identifier.",
-        )
+        ))
         .build();
     let (headers_scroller, headers_view) =
         widgets::text_area(&format_headers(&subscription.headers), true);
@@ -96,11 +103,11 @@ fn editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>, existing: Option
 
     let (dialog, confirm) = widgets::form_dialog(
         if is_new {
-            "Add subscription"
+            t("Add subscription")
         } else {
-            "Edit subscription"
+            t("Edit subscription")
         },
-        if is_new { "Add" } else { "Save" },
+        if is_new { t("Add") } else { t("Save") },
         &content,
     );
 
@@ -109,7 +116,7 @@ fn editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>, existing: Option
     confirm.connect_clicked(move |_| {
         let url_text = url.text().trim().to_string();
         if url_text.is_empty() {
-            save_state.toast("A subscription URL is required.");
+            save_state.toast(t("A subscription URL is required."));
             return;
         }
 
@@ -117,7 +124,7 @@ fn editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>, existing: Option
         entry.name = {
             let typed = name.text().trim().to_string();
             if typed.is_empty() {
-                "Subscription".to_string()
+                t("Subscription").to_string()
             } else {
                 typed
             }
@@ -148,13 +155,14 @@ fn editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>, existing: Option
 
 fn confirm_delete(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>, id: String, name: String) {
     let dialog = adw::AlertDialog::builder()
-        .heading("Remove subscription?")
-        .body(format!(
-            "\"{name}\" and its downloaded nodes will be deleted from this machine."
+        .heading(t("Remove subscription?"))
+        .body(tf(
+            "\"{}\" and its downloaded nodes will be deleted from this machine.",
+            &[&name],
         ))
         .build();
-    dialog.add_response("cancel", "Cancel");
-    dialog.add_response("delete", "Remove");
+    dialog.add_response("cancel", t("Cancel"));
+    dialog.add_response("delete", t("Remove"));
     dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
     dialog.set_default_response(Some("cancel"));
 
@@ -184,24 +192,29 @@ fn status_line(sub: &Subscription) -> String {
     }
     let mut parts = Vec::new();
     if sub.node_count > 0 {
-        parts.push(format!("{} nodes", sub.node_count));
+        parts.push(tf("{} nodes", &[&sub.node_count]));
     }
     if let Some(info) = sub.user_info {
         if info.total > 0 {
-            parts.push(format!(
+            parts.push(tf(
                 "{} of {} used, {} left",
-                format_bytes(info.used()),
-                format_bytes(info.total),
-                format_bytes(info.remaining())
+                &[
+                    &format_bytes(info.used()),
+                    &format_bytes(info.total),
+                    &format_bytes(info.remaining()),
+                ],
             ));
         }
         if info.expire > 0 {
-            parts.push(format!("expires {}", widgets::format_expiry(info.expire)));
+            parts.push(tf(
+                "expires {}",
+                &[&widgets::format_expiry(info.expire)],
+            ));
         }
     }
     match sub.last_updated {
-        Some(ts) => parts.push(format!("updated {}", widgets::format_timestamp(ts))),
-        None => parts.push("never updated".to_string()),
+        Some(ts) => parts.push(tf("updated {}", &[&widgets::format_timestamp(ts)])),
+        None => parts.push(t("never updated").to_string()),
     }
     parts.join(" · ")
 }
@@ -213,11 +226,13 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         widgets::clear(&content);
 
         let group = adw::PreferencesGroup::builder()
-            .title("Subscriptions")
-            .description("Only the nodes are taken from the provider — routing stays yours.")
+            .title(t("Subscriptions"))
+            .description(t(
+                "Only the nodes are taken from the provider — routing stays yours.",
+            ))
             .build();
 
-        let add = widgets::action_button("list-add-symbolic", "Add");
+        let add = widgets::action_button("list-add-symbolic", t("Add"));
         let add_state = state.clone();
         let add_anchor = content.clone();
         add.connect_clicked(move |_| editor(&add_state, &add_anchor, None));
@@ -228,10 +243,10 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
 
         if entries.is_empty() {
             let empty = adw::ActionRow::builder()
-                .title("No subscriptions yet")
-                .subtitle(
+                .title(t("No subscriptions yet"))
+                .subtitle(t(
                     "Add the URL your panel gave you; the HWID headers are sent automatically.",
-                )
+                ))
                 .build();
             group.add(&empty);
         }
@@ -248,7 +263,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
 
             let selector = gtk::CheckButton::builder()
                 .valign(gtk::Align::Center)
-                .tooltip_text("Use this subscription")
+                .tooltip_text(t("Use this subscription"))
                 .build();
             match &radio_anchor {
                 Some(anchor) => selector.set_group(Some(anchor)),
@@ -267,7 +282,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
             });
             row.add_prefix(&selector);
 
-            let refresh = widgets::icon_button("view-refresh-symbolic", "Update now");
+            let refresh = widgets::icon_button("view-refresh-symbolic", t("Update now"));
             let refresh_state = state.clone();
             let refresh_id = sub.id.clone();
             refresh.connect_clicked(move |_| {
@@ -275,7 +290,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
             });
             row.add_suffix(&refresh);
 
-            let edit = widgets::icon_button("document-edit-symbolic", "Edit");
+            let edit = widgets::icon_button("document-edit-symbolic", t("Edit"));
             let edit_state = state.clone();
             let edit_sub = sub.clone();
             let edit_anchor = content.clone();
@@ -284,7 +299,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
             });
             row.add_suffix(&edit);
 
-            let delete = widgets::icon_button("user-trash-symbolic", "Remove");
+            let delete = widgets::icon_button("user-trash-symbolic", t("Remove"));
             let delete_state = state.clone();
             let delete_anchor = content.clone();
             let delete_id = sub.id.clone();

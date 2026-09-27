@@ -6,6 +6,7 @@ use gtk::gio;
 use std::rc::Rc;
 
 use crate::config::{AppMatch, AppRule, DomainRule, MatchKind, RuleProvider, Target};
+use crate::i18n::t;
 use crate::state::AppState;
 use crate::ui::widgets;
 
@@ -44,35 +45,40 @@ fn app_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
 
     let apps = installed_apps();
     let group = adw::PreferencesGroup::builder()
-        .title("Application")
-        .description("Matching by process requires TUN mode; a plain system proxy cannot see which program opened a connection.")
+        .title(t("Application"))
+        .description(t(
+            "Matching by process requires TUN mode; a plain system proxy cannot see which program opened a connection.",
+        ))
         .build();
 
-    let mut choices: Vec<String> = vec!["Custom…".to_string()];
+    let mut choices: Vec<String> = vec![t("Custom…").to_string()];
     choices.extend(
         apps.iter()
             .map(|(name, process)| format!("{name}  ({process})")),
     );
     let picker = adw::ComboRow::builder()
-        .title("Installed application")
+        .title(t("Installed application"))
         .model(&widgets::string_list(&choices))
         .build();
     group.add(&picker);
 
     let process = adw::EntryRow::builder()
-        .title("Process name or path")
+        .title(t("Process name or path"))
         .build();
     group.add(&process);
 
     let match_by = adw::ComboRow::builder()
-        .title("Match by")
-        .model(&widgets::string_list(&["Process name", "Executable path"]))
+        .title(t("Match by"))
+        .model(&widgets::string_list(&[
+            t("Process name"),
+            t("Executable path"),
+        ]))
         .build();
     group.add(&match_by);
 
     let targets = state.config.borrow().routing.available_targets();
     let target = adw::ComboRow::builder()
-        .title("Send through")
+        .title(t("Send through"))
         .model(&widgets::string_list(
             &targets.iter().map(Target::label).collect::<Vec<_>>(),
         ))
@@ -92,14 +98,16 @@ fn app_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
         }
     });
 
-    let (dialog, confirm) = widgets::form_dialog("Add application rule", "Add", &content);
+    let (dialog, confirm) = widgets::form_dialog(t("Add application rule"), t("Add"), &content);
     let save_state = state.clone();
     let dialog_for_save = dialog.clone();
     let targets_for_save = targets.clone();
     confirm.connect_clicked(move |_| {
         let value = process.text().trim().to_string();
         if value.is_empty() {
-            save_state.toast("Enter a process name, for example telegram-desktop.");
+            save_state.toast(t(
+                "Enter a process name, for example telegram-desktop.",
+            ));
             return;
         }
         let index = picker.selected() as usize;
@@ -144,23 +152,25 @@ fn domain_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
         .build();
 
     let group = adw::PreferencesGroup::builder()
-        .title("Destination")
-        .description("With fake-ip DNS on, address matchers such as GEOIP resolve the destination — otherwise they would never match a domain.")
+        .title(t("Destination"))
+        .description(t(
+            "With fake-ip DNS on, address matchers such as GEOIP resolve the destination — otherwise they would never match a domain.",
+        ))
         .build();
 
     let kind = adw::ComboRow::builder()
-        .title("Match")
+        .title(t("Match"))
         .model(&widgets::string_list(&kind_labels()))
         .selected(1)
         .build();
     group.add(&kind);
 
-    let value = adw::EntryRow::builder().title("Value").build();
+    let value = adw::EntryRow::builder().title(t("Value")).build();
     group.add(&value);
 
     let targets = state.config.borrow().routing.available_targets();
     let target = adw::ComboRow::builder()
-        .title("Send through")
+        .title(t("Send through"))
         .model(&widgets::string_list(
             &targets.iter().map(Target::label).collect::<Vec<_>>(),
         ))
@@ -173,13 +183,13 @@ fn domain_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
     );
     content.append(&hint);
 
-    let (dialog, confirm) = widgets::form_dialog("Add routing rule", "Add", &content);
+    let (dialog, confirm) = widgets::form_dialog(t("Add routing rule"), t("Add"), &content);
     let save_state = state.clone();
     let dialog_for_save = dialog.clone();
     confirm.connect_clicked(move |_| {
         let text = value.text().trim().to_string();
         if text.is_empty() {
-            save_state.toast("Enter a value to match.");
+            save_state.toast(t("Enter a value to match."));
             return;
         }
         let rule = DomainRule {
@@ -215,27 +225,29 @@ fn provider_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
         .build();
 
     let group = adw::PreferencesGroup::builder()
-        .title("Rule provider")
-        .description("A remote list the core downloads and refreshes on its own.")
+        .title(t("Rule provider"))
+        .description(t(
+            "A remote list the core downloads and refreshes on its own.",
+        ))
         .build();
 
-    let name = adw::EntryRow::builder().title("Name").build();
-    let url = adw::EntryRow::builder().title("URL").build();
+    let name = adw::EntryRow::builder().title(t("Name")).build();
+    let url = adw::EntryRow::builder().title(t("URL")).build();
     let behavior = adw::ComboRow::builder()
-        .title("Behavior")
+        .title(t("Behavior"))
         .model(&widgets::string_list(&["domain", "ipcidr", "classical"]))
         .build();
     let format = adw::ComboRow::builder()
-        .title("Format")
+        .title(t("Format"))
         .model(&widgets::string_list(&["yaml", "text", "mrs"]))
         .build();
     let interval = adw::SpinRow::with_range(300.0, 604800.0, 300.0);
-    interval.set_title("Refresh interval (seconds)");
+    interval.set_title(t("Refresh interval (seconds)"));
     interval.set_value(86400.0);
 
     let targets = state.config.borrow().routing.available_targets();
     let target = adw::ComboRow::builder()
-        .title("Send through")
+        .title(t("Send through"))
         .model(&widgets::string_list(
             &targets.iter().map(Target::label).collect::<Vec<_>>(),
         ))
@@ -249,14 +261,14 @@ fn provider_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
     group.add(&target);
     content.append(&group);
 
-    let (dialog, confirm) = widgets::form_dialog("Add rule provider", "Add", &content);
+    let (dialog, confirm) = widgets::form_dialog(t("Add rule provider"), t("Add"), &content);
     let save_state = state.clone();
     let dialog_for_save = dialog.clone();
     confirm.connect_clicked(move |_| {
         let provider_name = name.text().trim().to_string();
         let provider_url = url.text().trim().to_string();
         if provider_name.is_empty() || provider_url.is_empty() {
-            save_state.toast("A provider needs both a name and a URL.");
+            save_state.toast(t("A provider needs both a name and a URL."));
             return;
         }
         let provider = RuleProvider {
@@ -294,18 +306,16 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
 
         // ---- ordering explainer ----
         let order = adw::PreferencesGroup::builder()
-            .title("Rule order")
-            .description(
-                "Rules are evaluated top to bottom and the first match wins: \
-                 application rules, then the private-network bypass, then destination \
-                 rules, then rule providers, and finally the default action.",
-            )
+            .title(t("Rule order"))
+            .description(t(
+                "Rules are evaluated top to bottom and the first match wins: application rules, then the private-network bypass, then destination rules, then rule providers, and finally the default action.",
+            ))
             .build();
 
         let default_target = state.config.borrow().routing.default_target.clone();
         let default_row = adw::ComboRow::builder()
-            .title("Everything else")
-            .subtitle("The final MATCH rule")
+            .title(t("Everything else"))
+            .subtitle(t("The final MATCH rule"))
             .model(&widgets::string_list(
                 &targets.iter().map(Target::label).collect::<Vec<_>>(),
             ))
@@ -332,15 +342,15 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         // ---- applications ----
         let tun_on = state.config.borrow().core.tun_enabled;
         let apps_group = adw::PreferencesGroup::builder()
-            .title("Applications")
+            .title(t("Applications"))
             .description(if tun_on {
-                "Route individual programs, whatever they connect to."
+                t("Route individual programs, whatever they connect to.")
             } else {
-                "⚠ TUN is disabled in Settings — process rules cannot match without it."
+                t("⚠ TUN is disabled in Settings — process rules cannot match without it.")
             })
             .build();
 
-        let add_app = widgets::action_button("list-add-symbolic", "Add");
+        let add_app = widgets::action_button("list-add-symbolic", t("Add"));
         let add_app_state = state.clone();
         let add_app_anchor = content.clone();
         add_app.connect_clicked(move |_| app_editor(&add_app_state, &add_app_anchor));
@@ -350,8 +360,10 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         if app_rules.is_empty() {
             apps_group.add(
                 &adw::ActionRow::builder()
-                    .title("No application rules")
-                    .subtitle("For example: Steam direct, browser through the tunnel.")
+                    .title(t("No application rules"))
+                    .subtitle(t(
+                        "For example: Steam direct, browser through the tunnel.",
+                    ))
                     .build(),
             );
         }
@@ -390,7 +402,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
             });
             row.add_suffix(&dropdown);
 
-            let remove = widgets::icon_button("user-trash-symbolic", "Remove");
+            let remove = widgets::icon_button("user-trash-symbolic", t("Remove"));
             let remove_state = state.clone();
             remove.connect_clicked(move |_| {
                 remove_state
@@ -408,9 +420,9 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
 
         // ---- destinations ----
         let domains_group = adw::PreferencesGroup::builder()
-            .title("Domains, IP and geo")
+            .title(t("Domains, IP and geo"))
             .build();
-        let add_domain = widgets::action_button("list-add-symbolic", "Add");
+        let add_domain = widgets::action_button("list-add-symbolic", t("Add"));
         let add_domain_state = state.clone();
         let add_domain_anchor = content.clone();
         add_domain.connect_clicked(move |_| domain_editor(&add_domain_state, &add_domain_anchor));
@@ -420,8 +432,10 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         if domain_rules.is_empty() {
             domains_group.add(
                 &adw::ActionRow::builder()
-                    .title("No destination rules")
-                    .subtitle("Local traffic already bypasses the tunnel when the private-network bypass is on.")
+                    .title(t("No destination rules"))
+                    .subtitle(t(
+                        "Local traffic already bypasses the tunnel when the private-network bypass is on.",
+                    ))
                     .build(),
             );
         }
@@ -452,7 +466,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
             });
             row.add_suffix(&dropdown);
 
-            let remove = widgets::icon_button("user-trash-symbolic", "Remove");
+            let remove = widgets::icon_button("user-trash-symbolic", t("Remove"));
             let remove_state = state.clone();
             remove.connect_clicked(move |_| {
                 remove_state
@@ -470,10 +484,12 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
 
         // ---- providers ----
         let providers_group = adw::PreferencesGroup::builder()
-            .title("Rule providers")
-            .description("Remote lists such as antifilter or a geosite mirror.")
+            .title(t("Rule providers"))
+            .description(t(
+                "Remote lists such as antifilter or a geosite mirror.",
+            ))
             .build();
-        let add_provider = widgets::action_button("list-add-symbolic", "Add");
+        let add_provider = widgets::action_button("list-add-symbolic", t("Add"));
         let add_provider_state = state.clone();
         let add_provider_anchor = content.clone();
         add_provider
@@ -491,7 +507,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
                     provider.target.label()
                 ))
                 .build();
-            let remove = widgets::icon_button("user-trash-symbolic", "Remove");
+            let remove = widgets::icon_button("user-trash-symbolic", t("Remove"));
             let remove_state = state.clone();
             remove.connect_clicked(move |_| {
                 remove_state
@@ -509,8 +525,10 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
 
         // ---- raw ----
         let raw_group = adw::PreferencesGroup::builder()
-            .title("Raw rules")
-            .description("Written verbatim. The first block goes above everything generated, the second just before the default action.")
+            .title(t("Raw rules"))
+            .description(t(
+                "Written verbatim. The first block goes above everything generated, the second just before the default action.",
+            ))
             .build();
 
         let (prepend_scroller, prepend_view) = widgets::text_area(
@@ -524,12 +542,14 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
             .orientation(gtk::Orientation::Vertical)
             .spacing(8)
             .build();
-        raw_box.append(&widgets::dim_label("Before everything"));
+        raw_box.append(&widgets::dim_label(t("Before everything")));
         raw_box.append(&prepend_scroller);
-        raw_box.append(&widgets::dim_label("Just before the default action"));
+        raw_box.append(&widgets::dim_label(t(
+            "Just before the default action",
+        )));
         raw_box.append(&append_scroller);
 
-        let save = gtk::Button::with_label("Save raw rules");
+        let save = gtk::Button::with_label(t("Save raw rules"));
         save.add_css_class("suggested-action");
         save.set_halign(gtk::Align::End);
         let save_state = state.clone();
@@ -548,7 +568,9 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
                 cfg.routing.raw_append = split(&append_view);
             }
             save_state.save();
-            save_state.toast("Raw rules saved — apply the configuration to use them.");
+            save_state.toast(t(
+                "Raw rules saved — apply the configuration to use them.",
+            ));
         });
         raw_box.append(&save);
         raw_group.add(&raw_box);

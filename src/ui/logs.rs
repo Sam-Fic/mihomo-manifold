@@ -7,6 +7,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 use crate::api::LogLine;
+use crate::i18n::t;
 use crate::runtime;
 use crate::state::AppState;
 use crate::ui::widgets;
@@ -83,20 +84,20 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
     let level = gtk::DropDown::builder()
         .model(&widgets::string_list(&LEVELS))
         .selected(2)
-        .tooltip_text("Level requested from the core")
+        .tooltip_text(t("Level requested from the core"))
         .build();
 
     let search = gtk::SearchEntry::builder()
-        .placeholder_text("Filter")
+        .placeholder_text(t("Filter"))
         .hexpand(true)
         .build();
 
     let pause = gtk::ToggleButton::builder()
         .icon_name("media-playback-pause-symbolic")
-        .tooltip_text("Pause")
+        .tooltip_text(t("Pause"))
         .build();
 
-    let clear = widgets::icon_button("edit-clear-all-symbolic", "Clear");
+    let clear = widgets::icon_button("edit-clear-all-symbolic", t("Clear"));
 
     toolbar.append(&level);
     toolbar.append(&search);
@@ -122,9 +123,9 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
     scroller.add_css_class("card");
     container.append(&scroller);
 
-    let hint = widgets::dim_label(
+    let hint = widgets::dim_label(t(
         "The core writes its own log to $XDG_STATE_HOME/mihomo-manifold/core.log as well.",
-    );
+    ));
     container.append(&hint);
 
     // ---- filtering ----
@@ -159,6 +160,15 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
     let stream_view = view.clone();
     let stream_level = level.clone();
     state.subscribe(move |state| {
+        // The toolbar was built once; retranslate it after a language change.
+        level.set_tooltip_text(Some(t("Level requested from the core")));
+        search.set_placeholder_text(Some(t("Filter")));
+        pause.set_tooltip_text(Some(t("Pause")));
+        clear.set_tooltip_text(Some(t("Clear")));
+        hint.set_label(t(
+            "The core writes its own log to $XDG_STATE_HOME/mihomo-manifold/core.log as well.",
+        ));
+
         if !state.is_running() || stream_logs.streaming.get() {
             return;
         }

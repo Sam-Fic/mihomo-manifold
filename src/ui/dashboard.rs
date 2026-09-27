@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 use crate::api::format_bytes;
 use crate::corectl::CoreStatus;
+use crate::i18n::{t, tf};
 use crate::runtime;
 use crate::state::{self, AppState};
 use crate::ui::widgets;
@@ -107,7 +108,7 @@ fn draw_graph(traffic: &Rc<Traffic>) -> gtk::DrawingArea {
         );
         cr.set_font_size(11.0);
         cr.move_to(padding + 2.0, padding + 12.0);
-        let _ = cr.show_text(&format!("peak {}/s", format_bytes(peak as u64)));
+        let _ = cr.show_text(&tf("peak {}/s", &[&format_bytes(peak as u64)]));
     });
 
     area
@@ -118,48 +119,48 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
     let traffic = Traffic::new();
 
     // ---- core status ----
-    let status_group = adw::PreferencesGroup::builder().title("Core").build();
+    let status_group = adw::PreferencesGroup::builder().title(t("Core")).build();
 
     let power = gtk::Switch::builder().valign(gtk::Align::Center).build();
     let status_row = adw::ActionRow::builder()
-        .title("Stopped")
-        .subtitle("The proxy core is not running")
+        .title(t("Stopped"))
+        .subtitle(t("The proxy core is not running"))
         .build();
     status_row.add_suffix(&power);
     status_group.add(&status_row);
 
     let profile_row = adw::ActionRow::builder()
-        .title("Active subscription")
-        .subtitle("none")
+        .title(t("Active subscription"))
+        .subtitle(t("none"))
         .build();
     status_group.add(&profile_row);
 
     // Tunnel or plain proxy. It lives here rather than in Settings because it is
     // the one thing people switch depending on where they are.
     let mode_picker = adw::ComboRow::builder()
-        .title("Mode")
+        .title(t("Mode"))
         .model(&widgets::string_list(&[
-            "Tunnel (TUN) — captures everything",
-            "Proxy only — one port, no privileges",
+            t("Tunnel (TUN) — captures everything"),
+            t("Proxy only — one port, no privileges"),
         ]))
         .build();
     status_group.add(&mode_picker);
 
-    let proxy_row = adw::ActionRow::builder().title("Proxy address").build();
+    let proxy_row = adw::ActionRow::builder().title(t("Proxy address")).build();
     proxy_row.add_css_class("property");
-    let copy_proxy = widgets::icon_button("edit-copy-symbolic", "Copy");
+    let copy_proxy = widgets::icon_button("edit-copy-symbolic", t("Copy"));
     proxy_row.add_suffix(&copy_proxy);
     status_group.add(&proxy_row);
 
     let mode_row = adw::ActionRow::builder()
-        .title("Routing")
-        .subtitle("—")
+        .title(t("Routing"))
+        .subtitle(t("—"))
         .build();
     status_group.add(&mode_row);
     content.append(&status_group);
 
     // ---- traffic ----
-    let traffic_group = adw::PreferencesGroup::builder().title("Traffic").build();
+    let traffic_group = adw::PreferencesGroup::builder().title(t("Traffic")).build();
     let graph = draw_graph(&traffic);
 
     let rates = gtk::Box::builder()
@@ -169,22 +170,22 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         .margin_top(10)
         .build();
 
-    let make_stat = |caption: &str| {
+    let make_stat = |caption: &'static str| {
         let column = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .spacing(2)
             .build();
         let value = gtk::Label::builder().label("0 B/s").xalign(0.0).build();
         value.add_css_class("title-4");
-        let label = widgets::dim_label(caption);
+        let label = widgets::dim_label(t(caption));
         column.append(&value);
         column.append(&label);
-        (column, value)
+        (column, value, label, caption)
     };
 
-    let (down_box, down_label) = make_stat("Download");
-    let (up_box, up_label) = make_stat("Upload");
-    let (session_box, session_label) = make_stat("This session");
+    let (down_box, down_label, down_caption, down_key) = make_stat("Download");
+    let (up_box, up_label, up_caption, up_key) = make_stat("Upload");
+    let (session_box, session_label, session_caption, session_key) = make_stat("This session");
     rates.append(&down_box);
     rates.append(&up_box);
     rates.append(&session_box);
@@ -200,12 +201,14 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
 
     // ---- quick actions ----
     let actions_group = adw::PreferencesGroup::builder()
-        .title("Quick actions")
+        .title(t("Quick actions"))
         .build();
 
     let apply_row = adw::ActionRow::builder()
-        .title("Apply configuration")
-        .subtitle("Regenerate config.yaml from your rules and reload the core")
+        .title(t("Apply configuration"))
+        .subtitle(t(
+            "Regenerate config.yaml from your rules and reload the core",
+        ))
         .activatable(true)
         .build();
     apply_row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
@@ -214,8 +217,8 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
     actions_group.add(&apply_row);
 
     let update_row = adw::ActionRow::builder()
-        .title("Update active subscription")
-        .subtitle("Download nodes again and reload")
+        .title(t("Update active subscription"))
+        .subtitle(t("Download nodes again and reload"))
         .activatable(true)
         .build();
     update_row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
@@ -228,13 +231,17 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
             .map(|sub| sub.id.clone());
         match id {
             Some(id) => state::update_subscription(&update_state, &id, true),
-            None => update_state.toast("Add a subscription first."),
+            None => update_state.toast(t("Add a subscription first.")),
         }
     });
     actions_group.add(&update_row);
     content.append(&actions_group);
 
     // ---- wiring ----
+    let mode_options: [&'static str; 2] = [
+        "Tunnel (TUN) — captures everything",
+        "Proxy only — one port, no privileges",
+    ];
     let mode_state = state.clone();
     mode_picker.connect_selected_notify(move |combo| {
         if mode_state.is_refreshing() {
@@ -255,7 +262,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
     copy_proxy.connect_clicked(move |button| {
         let address = format!("127.0.0.1:{}", copy_state.config.borrow().core.mixed_port);
         widgets::copy_to_clipboard(button, &address);
-        copy_state.toast("Proxy address copied");
+        copy_state.toast(t("Proxy address copied"));
     });
 
     let switch_state = state.clone();
@@ -272,6 +279,29 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
 
     let traffic_for_refresh = traffic.clone();
     state.subscribe(move |state| {
+        // Retranslate everything that was built once outside this closure; a
+        // no-op unless the user just switched languages.
+        status_group.set_title(t("Core"));
+        profile_row.set_title(t("Active subscription"));
+        mode_picker.set_title(t("Mode"));
+        mode_picker.set_model(Some(&widgets::string_list(
+            &mode_options.map(t),
+        )));
+        proxy_row.set_title(t("Proxy address"));
+        copy_proxy.set_tooltip_text(Some(t("Copy")));
+        mode_row.set_title(t("Routing"));
+        traffic_group.set_title(t("Traffic"));
+        down_caption.set_label(t(down_key));
+        up_caption.set_label(t(up_key));
+        session_caption.set_label(t(session_key));
+        actions_group.set_title(t("Quick actions"));
+        apply_row.set_title(t("Apply configuration"));
+        apply_row.set_subtitle(t(
+            "Regenerate config.yaml from your rules and reload the core",
+        ));
+        update_row.set_title(t("Update active subscription"));
+        update_row.set_subtitle(t("Download nodes again and reload"));
+
         let running = state.is_running();
         power.set_active(running);
 
@@ -279,24 +309,24 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         let version = state.core_version.borrow().clone();
         match &status {
             CoreStatus::Running => {
-                status_row.set_title("Running");
+                status_row.set_title(t("Running"));
                 status_row.set_subtitle(&match &version {
-                    Some(v) => format!("mihomo {v}, started by MihomoManifold"),
-                    None => "started by MihomoManifold".to_string(),
+                    Some(v) => tf("mihomo {}, started by MihomoManifold", &[v]),
+                    None => t("started by MihomoManifold").to_string(),
                 });
             }
             CoreStatus::Adopted => {
-                status_row.set_title("Running (external)");
-                status_row.set_subtitle(
+                status_row.set_title(t("Running (external)"));
+                status_row.set_subtitle(t(
                     "A core was already listening on the controller port; it was adopted.",
-                );
+                ));
             }
             CoreStatus::Stopped => {
-                status_row.set_title("Stopped");
-                status_row.set_subtitle("The proxy core is not running");
+                status_row.set_title(t("Stopped"));
+                status_row.set_subtitle(t("The proxy core is not running"));
             }
             CoreStatus::Failed(err) => {
-                status_row.set_title("Failed to start");
+                status_row.set_title(t("Failed to start"));
                 status_row.set_subtitle(err);
             }
         }
@@ -304,42 +334,44 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         {
             let cfg = state.config.borrow();
             profile_row.set_subtitle(&match cfg.active() {
-                Some(sub) => format!("{} — {} nodes", sub.name, sub.node_count),
-                None => "none".to_string(),
+                Some(sub) => tf("{} — {} nodes", &[&sub.name, &sub.node_count]),
+                None => t("none").to_string(),
             });
 
             mode_picker.set_selected(if cfg.core.tun_enabled { 0 } else { 1 });
             proxy_row.set_visible(!cfg.core.tun_enabled);
-            proxy_row.set_subtitle(&format!(
+            proxy_row.set_subtitle(&tf(
                 "127.0.0.1:{} (HTTP and SOCKS){}",
-                cfg.core.mixed_port,
-                if cfg.core.set_system_proxy {
-                    ", published to the desktop"
-                } else {
-                    ""
-                }
+                &[
+                    &cfg.core.mixed_port,
+                    &if cfg.core.set_system_proxy {
+                        t(", published to the desktop")
+                    } else {
+                        ""
+                    },
+                ],
             ));
-            mode_row.set_subtitle(&format!(
-                "{} · {} rule{} · {} app rule{}",
-                // The mode itself is the picker above; this line is about what
-                // the tunnel carries.
-                if cfg.core.tun_enabled {
-                    format!("stack {}", cfg.core.tun_stack)
-                } else {
-                    format!("port {}", cfg.core.mixed_port)
-                },
-                cfg.routing.domain_rules.len(),
-                if cfg.routing.domain_rules.len() == 1 {
-                    ""
-                } else {
-                    "s"
-                },
-                cfg.routing.app_rules.len(),
-                if cfg.routing.app_rules.len() == 1 {
-                    ""
-                } else {
-                    "s"
-                },
+            mode_row.set_subtitle(&tf(
+                "{} · {} · {}",
+                &[
+                    // The mode itself is the picker above; this line is about what
+                    // the tunnel carries.
+                    &if cfg.core.tun_enabled {
+                        tf("stack {}", &[&cfg.core.tun_stack])
+                    } else {
+                        tf("port {}", &[&cfg.core.mixed_port])
+                    },
+                    &if cfg.routing.domain_rules.len() == 1 {
+                        tf("{} rule", &[&cfg.routing.domain_rules.len()])
+                    } else {
+                        tf("{} rules", &[&cfg.routing.domain_rules.len()])
+                    },
+                    &if cfg.routing.app_rules.len() == 1 {
+                        tf("{} app rule", &[&cfg.routing.app_rules.len()])
+                    } else {
+                        tf("{} app rules", &[&cfg.routing.app_rules.len()])
+                    },
+                ],
             ));
         }
 

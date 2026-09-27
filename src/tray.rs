@@ -8,6 +8,7 @@
 
 use ksni::TrayMethods;
 
+use crate::i18n::t;
 use crate::runtime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,9 +51,9 @@ impl ksni::Tray for ManifoldTray {
         ksni::ToolTip {
             title: "MihomoManifold".into(),
             description: if self.running {
-                "Core is running".into()
+                t("Core is running").into()
             } else {
-                "Core is stopped".into()
+                t("Core is stopped").into()
             },
             ..Default::default()
         }
@@ -66,7 +67,7 @@ impl ksni::Tray for ManifoldTray {
         use ksni::menu::*;
         vec![
             StandardItem {
-                label: "Open MihomoManifold".into(),
+                label: t("Open MihomoManifold").into(),
                 activate: Box::new(|this: &mut Self| this.send(TrayCommand::Show)),
                 ..Default::default()
             }
@@ -74,9 +75,9 @@ impl ksni::Tray for ManifoldTray {
             MenuItem::Separator,
             StandardItem {
                 label: if self.running {
-                    "Stop the core".into()
+                    t("Stop the core").into()
                 } else {
-                    "Start the core".into()
+                    t("Start the core").into()
                 },
                 activate: Box::new(|this: &mut Self| this.send(TrayCommand::ToggleCore)),
                 ..Default::default()
@@ -84,7 +85,7 @@ impl ksni::Tray for ManifoldTray {
             .into(),
             MenuItem::Separator,
             StandardItem {
-                label: "Quit".into(),
+                label: t("Quit").into(),
                 activate: Box::new(|this: &mut Self| this.send(TrayCommand::Quit)),
                 ..Default::default()
             }
