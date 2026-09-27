@@ -53,7 +53,9 @@ fn editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>, existing: Option
     let general = adw::PreferencesGroup::new();
     let name = adw::EntryRow::builder().title(t("Name")).build();
     name.set_text(&subscription.name);
-    let url = adw::EntryRow::builder().title(t("Subscription URL")).build();
+    let url = adw::EntryRow::builder()
+        .title(t("Subscription URL"))
+        .build();
     url.set_text(&subscription.url);
     general.add(&name);
     general.add(&url);
@@ -80,9 +82,7 @@ fn editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>, existing: Option
     identity.add(&hwid_row);
     content.append(&identity);
 
-    let update = adw::PreferencesGroup::builder()
-        .title(t("Updates"))
-        .build();
+    let update = adw::PreferencesGroup::builder().title(t("Updates")).build();
     let interval = adw::SpinRow::with_range(0.0, 10080.0, 30.0);
     interval.set_title(t("Auto-update interval"));
     interval.set_subtitle(t("Minutes; 0 disables automatic updates"));
@@ -206,10 +206,7 @@ fn status_line(sub: &Subscription) -> String {
             ));
         }
         if info.expire > 0 {
-            parts.push(tf(
-                "expires {}",
-                &[&widgets::format_expiry(info.expire)],
-            ));
+            parts.push(tf("expires {}", &[&widgets::format_expiry(info.expire)]));
         }
     }
     match sub.last_updated {

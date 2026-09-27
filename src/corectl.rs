@@ -66,10 +66,9 @@ impl TunReadiness {
     pub fn describe(&self) -> String {
         match self {
             TunReadiness::Ready => t("The core binary can create the TUN device.").to_string(),
-            TunReadiness::Unknown => t(
-                "getcap is not installed, so privileges could not be checked.",
-            )
-            .to_string(),
+            TunReadiness::Unknown => {
+                t("getcap is not installed, so privileges could not be checked.").to_string()
+            }
             _ => format!("⚠ {}", self.warning().unwrap_or_default()),
         }
     }

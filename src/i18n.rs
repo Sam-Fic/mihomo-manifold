@@ -47,7 +47,11 @@ fn detect_system() -> Lang {
         if v.is_empty() {
             continue;
         }
-        return if v.starts_with("zh") { Lang::Zh } else { Lang::En };
+        return if v.starts_with("zh") {
+            Lang::Zh
+        } else {
+            Lang::En
+        };
     }
     Lang::En
 }

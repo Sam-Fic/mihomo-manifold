@@ -105,9 +105,7 @@ fn app_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
     confirm.connect_clicked(move |_| {
         let value = process.text().trim().to_string();
         if value.is_empty() {
-            save_state.toast(t(
-                "Enter a process name, for example telegram-desktop.",
-            ));
+            save_state.toast(t("Enter a process name, for example telegram-desktop."));
             return;
         }
         let index = picker.selected() as usize;

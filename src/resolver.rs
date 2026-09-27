@@ -183,7 +183,10 @@ fn install_blocking() -> Result<()> {
     let _ = std::fs::remove_file(&staged);
 
     if !out.status.success() {
-        return Err(explain(out.status.code(), &String::from_utf8_lossy(&out.stderr)));
+        return Err(explain(
+            out.status.code(),
+            &String::from_utf8_lossy(&out.stderr),
+        ));
     }
 
     std::fs::write(marker(), user).context("recording that the rule is installed")?;
@@ -204,7 +207,10 @@ fn uninstall_blocking() -> Result<()> {
         .output()
         .context("running pkexec")?;
     if !out.status.success() {
-        return Err(explain(out.status.code(), &String::from_utf8_lossy(&out.stderr)));
+        return Err(explain(
+            out.status.code(),
+            &String::from_utf8_lossy(&out.stderr),
+        ));
     }
     let _ = std::fs::remove_file(marker());
     Ok(())
@@ -293,4 +299,3 @@ mod tests {
         assert!(err.contains("cancelled"), "{err}");
     }
 }
-

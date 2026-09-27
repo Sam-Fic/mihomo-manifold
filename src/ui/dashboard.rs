@@ -284,9 +284,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         status_group.set_title(t("Core"));
         profile_row.set_title(t("Active subscription"));
         mode_picker.set_title(t("Mode"));
-        mode_picker.set_model(Some(&widgets::string_list(
-            &mode_options.map(t),
-        )));
+        mode_picker.set_model(Some(&widgets::string_list(&mode_options.map(t))));
         proxy_row.set_title(t("Proxy address"));
         copy_proxy.set_tooltip_text(Some(t("Copy")));
         mode_row.set_title(t("Routing"));
