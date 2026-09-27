@@ -4,6 +4,7 @@ mod api;
 mod config;
 mod corectl;
 mod hwid;
+mod i18n;
 mod paths;
 mod resolver;
 mod runtime;

@@ -16,6 +16,9 @@ pub const DEFAULT_USER_AGENT: &str =
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
+    /// UI language: "" / "auto" follow the system locale, "en" and "zh" force
+    /// one. Resolved once at startup by `i18n::apply_setting`.
+    pub language: String,
     pub core: CoreSettings,
     pub hwid: HwidSettings,
     pub subscriptions: Vec<Subscription>,
@@ -270,8 +273,9 @@ impl Target {
 
     pub fn label(&self) -> String {
         match self {
-            Target::Direct => "Direct".to_string(),
-            Target::Reject => "Reject".to_string(),
+            // UI label only; the rule itself uses `as_rule_target`.
+            Target::Direct => crate::i18n::t("Direct").to_string(),
+            Target::Reject => crate::i18n::t("Reject").to_string(),
             Target::Group(name) => name.clone(),
         }
     }
