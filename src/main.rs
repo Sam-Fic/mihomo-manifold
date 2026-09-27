@@ -57,7 +57,9 @@ fn main() -> gtk::glib::ExitCode {
     });
 
     // Never leave a core behind when the GUI goes away.
-    app.connect_shutdown(|_| corectl::stop());
+    app.connect_shutdown(|_| {
+        corectl::stop();
+    });
 
     app.run()
 }

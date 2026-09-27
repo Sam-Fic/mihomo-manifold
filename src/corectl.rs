@@ -182,11 +182,21 @@ pub fn start(cfg: &AppConfig, generated_yaml: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn stop() {
+/// Stops the core, if it is ours to stop.
+///
+/// Returns whether there was one. A core that was merely adopted is running
+/// under whatever started it, and killing a process this GUI did not launch is
+/// not a decision it should make on the user's behalf — so `false` here means
+/// "nothing was running that belongs to us", not "everything is fine".
+pub fn stop() -> bool {
     let mut guard = CHILD.lock().unwrap();
-    if let Some(mut child) = guard.take() {
-        let _ = child.kill();
-        let _ = child.wait();
+    match guard.take() {
+        Some(mut child) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            true
+        }
+        None => false,
     }
 }
 
@@ -199,10 +209,182 @@ pub fn tail_log(lines: usize) -> String {
     all[all.len().saturating_sub(lines)..].join("\n")
 }
 
+/// Real UID of a process, read from `/proc/<pid>/status`.
+///
+/// Only ever used to refuse signalling somebody else's process. A core started
+/// by root is left alone no matter what the user asks for: this is a desktop
+/// app, not a service manager.
+fn real_uid(pid: u32) -> Option<u32> {
+    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+    status.lines().find_map(|line| {
+        let rest = line.strip_prefix("Uid:")?;
+        rest.split_whitespace().next()?.parse().ok()
+    })
+}
+
+fn alive(pid: u32) -> bool {
+    Path::new(&format!("/proc/{pid}")).exists()
+}
+
+fn signal(pid: u32, sig: &str) {
+    // std has no kill(2); /bin/kill is on every Linux install we target, and
+    // two signals do not justify pulling in a C dependency.
+    let _ = Command::new("kill")
+        .arg(format!("-{sig}"))
+        .arg(pid.to_string())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+/// Whether `argv0` names the same binary as `want`.
+///
+/// `argv[0]` is the only handle on an external core, so the comparison is
+/// deliberately strict: resolved paths must be equal, and the file-name
+/// fallback only applies when the process could not be resolved at all.
+fn names_same_binary(argv0: &str, want: &Path, want_name: Option<&std::ffi::OsStr>) -> bool {
+    if argv0.is_empty() {
+        return false;
+    }
+    match Path::new(argv0).canonicalize() {
+        Ok(path) => path == want,
+        Err(_) => Path::new(argv0).file_name() == want_name,
+    }
+}
+
+/// PIDs of cores running `binary` that this GUI did not start.
+///
+/// The listening port cannot be mapped to a PID: a core carrying capabilities
+/// makes `/proc/<pid>/fd` unreadable without `CAP_SYS_PTRACE`, which is exactly
+/// the case for any core able to open a TUN device. So the match is on the
+/// command line instead — the path in `argv[0]` against the configured binary,
+/// restricted to our own uid.
+pub fn external_cores(binary: &str) -> Vec<u32> {
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    let me = std::process::id();
+    let me_uid = real_uid(me);
+    let want = Path::new(binary)
+        .canonicalize()
+        .unwrap_or_else(|_| Path::new(binary).to_path_buf());
+    let want_name = want.file_name().map(|n| n.to_owned());
+
+    let mut found = Vec::new();
+    for entry in entries.flatten() {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        if pid == me || real_uid(pid) != me_uid {
+            continue;
+        }
+        let Ok(raw) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
+            continue;
+        };
+        let argv0 = String::from_utf8_lossy(&raw)
+            .split('\0')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        if names_same_binary(&argv0, &want, want_name.as_deref()) {
+            found.push(pid);
+        }
+    }
+    found.sort_unstable();
+    found
+}
+
+/// Stops a core this GUI did not start, and reports which PIDs it signalled.
+///
+/// SIGTERM first and only then SIGKILL, because a core killed outright leaves
+/// its TUN device and routes behind: the tunnel interface stays up with no
+/// process to feed it, and the host's networking is left pointing into a black
+/// hole. A core that has been asked nicely gets to tear that down itself.
+pub fn stop_external(binary: &str) -> Vec<u32> {
+    let pids = external_cores(binary);
+    if pids.is_empty() {
+        return pids;
+    }
+    for &pid in &pids {
+        signal(pid, "TERM");
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while std::time::Instant::now() < deadline {
+        if pids.iter().all(|pid| !alive(*pid)) {
+            return pids;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    for &pid in &pids {
+        if alive(pid) {
+            signal(pid, "KILL");
+        }
+    }
+    pids
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::ErrorKind;
+
+    #[test]
+    fn external_core_matching_is_strict_where_it_can_be() {
+        let want = Path::new("/usr/bin/mihomo");
+        let name = Some(std::ffi::OsStr::new("mihomo"));
+
+        // A resolvable path has to be the real thing, not merely similar.
+        assert!(names_same_binary("/bin/mihomo", want, name)); // /bin -> /usr/bin
+        assert!(!names_same_binary("/usr/bin/other", want, name));
+        assert!(!names_same_binary("", want, name)); // kernel thread
+    }
+
+    #[test]
+    fn an_argv_that_cannot_be_resolved_falls_back_to_the_file_name() {
+        // A process started through PATH or a script has an argv[0] that does
+        // not resolve, and there is nothing else to go on. This is the loosest
+        // the match ever gets: it requires the name to match *and* the process
+        // to be running as the same user.
+        let nowhere = Path::new("/nonexistent/dir/mihomo");
+        let name = Some(std::ffi::OsStr::new("mihomo"));
+        assert!(names_same_binary("mihomo", nowhere, name));
+        assert!(names_same_binary("/opt/vanished/mihomo", nowhere, name));
+        assert!(!names_same_binary("clash", nowhere, name));
+        assert!(!names_same_binary("", nowhere, name));
+    }
+
+    #[test]
+    fn nothing_matches_a_binary_that_does_not_exist() {
+        assert!(
+            external_cores("/nonexistent/definitely-not-here").is_empty(),
+            "a bogus path must not match anything, including this very process"
+        );
+    }
+
+    #[test]
+    fn a_process_can_see_its_own_uid() {
+        assert_eq!(real_uid(std::process::id()), real_uid(std::process::id()));
+        assert!(real_uid(std::process::id()).is_some());
+    }
+
+    #[test]
+    fn stopping_without_a_core_reports_that_nothing_was_stopped() {
+        // The return value is what stops the UI from claiming a stop that never
+        // happened when it has merely adopted a core started elsewhere.
+        let mut guard = CHILD.lock().unwrap();
+        *guard = None;
+        // The guard has to go before calling stop(), or this deadlocks on the
+        // very mutex stop() needs.
+        drop(guard);
+        assert!(
+            !stop(),
+            "an empty child slot must not report a successful stop"
+        );
+    }
 
     #[test]
     fn group_membership_is_not_a_missing_capability() {

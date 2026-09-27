@@ -316,7 +316,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
             CoreStatus::Adopted => {
                 status_row.set_title(t("Running (external)"));
                 status_row.set_subtitle(t(
-                    "A core was already listening on the controller port; it was adopted.",
+                    "A core this app did not start is running. Turning the switch off will stop it.",
                 ));
             }
             CoreStatus::Stopped => {

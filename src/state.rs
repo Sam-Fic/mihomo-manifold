@@ -234,13 +234,51 @@ pub fn sync_system_proxy(state: &Rc<AppState>) {
 }
 
 pub fn stop(state: &Rc<AppState>) {
-    core::stop();
+    if core::stop() {
+        *state.status.borrow_mut() = CoreStatus::Stopped;
+        // Do this before notifying: leaving the desktop pointed at a port that
+        // no longer answers takes the whole session offline.
+        sync_system_proxy(state);
+        *state.core_version.borrow_mut() = None;
+        state.notify();
+        return;
+    }
+
+    // No child of ours, but the user asked for the proxy to be off. A core
+    // answering the controller may be one this GUI started in an earlier
+    // session and never got to clean up, and leaving it running after the
+    // switch is turned off is the worse failure.
+    let binary = state.config.borrow().core.binary.clone();
+    let binary = if binary.trim().is_empty() {
+        state.config.borrow().core.resolve_binary()
+    } else {
+        binary
+    };
+    let stopped = core::stop_external(&binary);
+
+    if stopped.is_empty() {
+        // Nothing matched. Saying "stopped" anyway would be a lie the poll
+        // below undoes, and turning the system proxy off here would take the
+        // whole session offline for a stop that never happened.
+        state.toast(t(
+            "No core was found to stop. Another program may be holding the port; \
+             MihomoManifold can only stop the core it knows about.",
+        ));
+        return;
+    }
+
     *state.status.borrow_mut() = CoreStatus::Stopped;
-    // Do this before notifying: leaving the desktop pointed at a port that no
-    // longer answers takes the whole session offline.
     sync_system_proxy(state);
     *state.core_version.borrow_mut() = None;
     state.notify();
+    state.toast(&tf(
+        "Stopped a core this app did not start ({}).",
+        &[&stopped
+            .iter()
+            .map(u32::to_string)
+            .collect::<Vec<_>>()
+            .join(", ")],
+    ));
 }
 
 /// Probe the controller; also picks up a core started outside the GUI.

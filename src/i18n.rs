@@ -138,8 +138,16 @@ const ZH: &[(&str, &str)] = &[
     ("started by MihomoManifold", "由 MihomoManifold 启动"),
     ("Running (external)", "运行中（外部）"),
     (
-        "A core was already listening on the controller port; it was adopted.",
-        "检测到控制端口上已有内核在监听，已接管。",
+        "A core this app did not start is running. Turning the switch off will stop it.",
+        "有一个非本程序启动的内核正在运行。关闭开关会将其停止。",
+    ),
+    (
+        "No core was found to stop. Another program may be holding the port; MihomoManifold can only stop the core it knows about.",
+        "未找到可停止的内核。可能是其他程序占用了端口；MihomoManifold 只能停止自己管理的内核。",
+    ),
+    (
+        "Stopped a core this app did not start ({}).",
+        "已停止一个非本程序启动的内核（{}）。",
     ),
     ("Failed to start", "启动失败"),
     ("{} — {} nodes", "{} — {} 个节点"),
@@ -493,6 +501,32 @@ mod tests {
         // Extra or missing placeholders must not corrupt the text.
         assert_eq!(fill("a {} b", &[&1, &2]), "a 1 b");
         assert_eq!(fill("a {} b {}", &[&1]), "a 1 b ");
+    }
+
+    #[test]
+    fn the_external_core_wording_is_translated() {
+        // English source text is the lookup key, so editing a string in the UI
+        // silently drops it back to English. These are easy to break and
+        // invisible until someone runs the app in Chinese.
+        assert_eq!(
+            translate(
+                Lang::Zh,
+                "A core this app did not start is running. Turning the switch off will stop it."
+            ),
+            "有一个非本程序启动的内核正在运行。关闭开关会将其停止。"
+        );
+        assert_eq!(
+            translate(
+                Lang::Zh,
+                "No core was found to stop. Another program may be holding the port; \
+                 MihomoManifold can only stop the core it knows about."
+            ),
+            "未找到可停止的内核。可能是其他程序占用了端口；MihomoManifold 只能停止自己管理的内核。"
+        );
+        assert_eq!(
+            translate(Lang::Zh, "Stopped a core this app did not start ({})."),
+            "已停止一个非本程序启动的内核（{}）。"
+        );
     }
 
     #[test]
