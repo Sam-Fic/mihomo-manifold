@@ -5,6 +5,7 @@ mod config;
 mod corectl;
 mod hwid;
 mod paths;
+mod resolver;
 mod runtime;
 mod state;
 mod subscription;

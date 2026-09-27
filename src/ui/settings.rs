@@ -7,6 +7,8 @@ use std::rc::Rc;
 
 use crate::config::HwidMode;
 use crate::corectl;
+use crate::resolver;
+use crate::runtime;
 use crate::state::{self, AppState};
 use crate::sysproxy;
 use crate::template;
@@ -271,6 +273,60 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
             .build();
         capability_row.add_css_class("property");
         tun_group.add(&capability_row);
+
+        // In TUN mode the core hands the system resolver to its own tunnel
+        // interface, which systemd-resolved gates behind three separate admin
+        // actions. Installing the rule is the only way to avoid being asked for
+        // the password on every single start.
+        if resolver::applies() {
+            let resolver_auth = adw::SwitchRow::builder()
+                .title("Start the core without a password prompt")
+                .subtitle(
+                    "Install a polkit rule for the three systemd-resolved actions TUN needs. \
+                     Without it every start asks for your password three times.",
+                )
+                .build();
+            resolver_auth.set_active(resolver::installed());
+            let auth_state = state.clone();
+            resolver_auth.connect_active_notify(move |row| {
+                if auth_state.is_refreshing() {
+                    return;
+                }
+                let wanted = row.is_active();
+                // Re-entrant: a queued second toggle would run pkexec behind the
+                // dialog the first one opened.
+                row.set_sensitive(false);
+                let row = row.clone();
+                let done_state = auth_state.clone();
+                runtime::spawn(
+                    async move {
+                        let outcome = if wanted {
+                            resolver::install().await
+                        } else {
+                            resolver::uninstall().await
+                        };
+                        (wanted, outcome)
+                    },
+                    move |(wanted, outcome)| {
+                        match &outcome {
+                            Ok(()) => done_state.toast(if wanted {
+                                "Rule installed — the core will start without asking."
+                            } else {
+                                "Rule removed — starting the core will ask for your password."
+                            }),
+                            Err(err) => {
+                                done_state.toast(&err.to_string());
+                            }
+                        }
+                        row.set_sensitive(true);
+                        // Rebuild from what is actually on disk rather than from
+                        // what the switch was left saying.
+                        done_state.notify();
+                    },
+                );
+            });
+            tun_group.add(&resolver_auth);
+        }
 
         let stack = adw::ComboRow::builder()
             .title("Network stack")
