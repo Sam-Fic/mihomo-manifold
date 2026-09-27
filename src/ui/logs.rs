@@ -96,6 +96,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         .icon_name("media-playback-pause-symbolic")
         .tooltip_text(t("Pause"))
         .build();
+    pause.add_css_class("flat");
 
     let clear = widgets::icon_button("edit-clear-all-symbolic", t("Clear"));
 
