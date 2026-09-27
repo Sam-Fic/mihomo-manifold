@@ -1,0 +1,47 @@
+---
+name: Run unit tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # Pinned rather than ubuntu-latest: the app compiles against GTK 4.18 and
+    # libadwaita 1.5, which ubuntu-24.04 does not carry. `ubuntu-latest` only
+    # migrates to 26.04 during a two-month window, and the test result must not
+    # change underneath a pull request.
+    name: Test on Ubuntu 26.04
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential \
+            pkg-config \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            libssl-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Run unit tests
+        run: cargo test --locked

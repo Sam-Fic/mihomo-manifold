@@ -1,0 +1,56 @@
+---
+name: Promote build artifact to release
+
+# The deb workflow publishes on its own when a tag appears. This is the escape
+# hatch for the other cases: a re-run whose publish step failed, or a verified
+# artifact from a manual build that should replace what a release already has.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Source workflow run ID containing the artifact
+        required: true
+        type: string
+      artifact_name:
+        description: Exact artifact name to promote
+        required: true
+        type: string
+      release_tag:
+        description: Existing GitHub Release tag to receive the artifact
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  promote:
+    name: Upload verified artifact to release
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Download the selected artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: release-asset
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify and upload the release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: ${{ inputs.artifact_name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -eu
+          test -f "release-asset/$ARTIFACT_NAME"
+          # Refuse to ship a file that is not a package: an artifact from the
+          # wrong run would otherwise replace a good release asset silently.
+          dpkg-deb --info "release-asset/$ARTIFACT_NAME" >/dev/null
+          dpkg-deb --contents "release-asset/$ARTIFACT_NAME" \
+            | grep -q 'usr/lib/mihomo-manifold/mihomo$'
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          gh release upload "$RELEASE_TAG" "release-asset/$ARTIFACT_NAME" --repo "$GITHUB_REPOSITORY" --clobber
