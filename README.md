@@ -190,12 +190,17 @@ security decision, not something a GUI rebuild should pull in silently. Set
 `MIHOMO_BIN` to package an already-downloaded core instead, which is what the
 offline path and the tests use.
 
-`.github/workflows/deb.yml` runs the same script on every push, and publishes a
-GitHub release when a `v*` tag appears. The tag has to match the version in
-`Cargo.toml`; the workflow fails loudly if it does not. The runner is pinned to
-`ubuntu-26.04` rather than `ubuntu-latest`, because `ubuntu-latest` only moves
-to 26.04 during a two-month migration window and this build must not change
-underneath a tag.
+`.github/workflows/build-deb.yml` runs the same script whenever a `v*` tag
+appears, and publishes a GitHub release with the package attached. The tag has
+to match the version in `Cargo.toml`; the workflow fails loudly if it does not.
+`test.yml` runs the tests on every push and pull request. The runner is pinned
+to `ubuntu-26.04` rather than `ubuntu-latest`, because `ubuntu-latest` only moves
+to 26.04 during a two-month migration window and a tagged build must not change
+underneath its tag.
+
+The packaging and release procedures are written up in
+[docs/packaging/debian.md](docs/packaging/debian.md) and
+[docs/RELEASE.md](docs/RELEASE.md).
 
 ## Development
 
