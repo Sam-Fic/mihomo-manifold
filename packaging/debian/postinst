@@ -1,0 +1,28 @@
+#!/bin/sh
+# Post-installation for mihomo-manifold.
+set -e
+
+CORE=/usr/lib/mihomo-manifold/mihomo
+
+# TUN needs CAP_NET_ADMIN to create the tunnel device and its routes. The GUI
+# itself stays an ordinary user process: only the core is privileged, and only
+# on the three capabilities it actually uses.
+#
+# Deliberately not fatal. Without setcap the package is still installed and
+# still works as a plain proxy — only TUN is unavailable, and the app says so
+# in Settings rather than failing at start.
+if [ -x "$CORE" ]; then
+    if command -v setcap >/dev/null 2>&1; then
+        if setcap cap_net_admin,cap_net_raw,cap_net_bind_service+ep "$CORE"; then
+            echo "mihomo-manifold: TUN capabilities granted to $CORE"
+        else
+            echo "mihomo-manifold: could not grant TUN capabilities to $CORE." >&2
+            echo "mihomo-manifold: TUN mode is unavailable until you run:" >&2
+            echo "mihomo-manifold:   sudo setcap cap_net_admin,cap_net_raw,cap_net_bind_service+ep $CORE" >&2
+        fi
+    else
+        echo "mihomo-manifold: setcap not found (install libcap2-bin) — TUN mode is unavailable." >&2
+    fi
+fi
+
+exit 0

@@ -1,0 +1,123 @@
+name: deb
+
+# A tag is a release; everything else is a check that the package still builds.
+# `v*` is the convention the version in Cargo.toml already follows.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deb-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    # Pinned rather than ubuntu-latest: the app compiles against GTK 4.18 and
+    # libadwaita 1.5, which ubuntu-24.04 does not carry. `ubuntu-latest` only
+    # migrates to 26.04 during a two-month window, and this build must not
+    # change behaviour halfway through that.
+    runs-on: ubuntu-26.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+          # mihomo publishes an arm64 build and build-deb.sh already maps it;
+          # add a runner here when there is a reason to ship it.
+          # - arch: arm64
+          #   runs-on: ubuntu-26.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          tag=${GITHUB_REF#refs/tags/v}
+          if [ "$version" != "$tag" ]; then
+            echo "::error::tag v$tag does not match Cargo.toml version $version"
+            echo "::error::update the version in Cargo.toml, or retag as v$version"
+            exit 1
+          fi
+          echo "tag v$tag matches Cargo.toml"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            libssl-dev \
+            librsvg2-bin \
+            lintian
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Verify the version still compiles
+        run: cargo test --locked
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Package
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: packaging/build-deb.sh
+
+      - name: Describe the package
+        run: |
+          set -euo pipefail
+          deb=$(ls result/*.deb)
+          echo "### $(basename "$deb")" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          dpkg-deb --info "$deb" | sed -n '/Package:/,$p' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          dpkg-deb --contents "$deb" >> "$GITHUB_STEP_SUMMARY"
+          (cd result && sha256sum ./*.deb) | tee result/SHA256SUMS
+
+      - name: Lint
+        run: |
+          set -euo pipefail
+          deb=$(ls result/*.deb)
+          # pedantic is mostly noise for a package that ships no translations or
+          # changelog of its own, so it is reported rather than enforced.
+          lintian --pedantic --no-tag-display-limit "$deb" || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mihomo-manifold-${{ matrix.arch }}
+          path: result/*.deb
+          if-no-files-found: error
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          deb=$(ls result/*.deb)
+          gh release create "${GITHUB_REF#refs/tags/}" \
+            --title "MihomoManifold ${GITHUB_REF#refs/tags/}" \
+            --generate-notes \
+            "$deb" "$(cat result/SHA256SUMS)" \
+            || gh release upload "${GITHUB_REF#refs/tags/}" "$deb" result/SHA256SUMS --clobber

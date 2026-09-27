@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Placeholder icon for MihomoManifold. Replace freely — nothing in the build
+  depends on the artwork, only on the file name matching the application ID.
+
+  The motif is a single inbound splitting into several routes, which is what
+  the app is about. Drawn on a 128 grid with flat shapes so it stays legible
+  at 16px and has no gradients that turn to mud when scaled down.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a7bd5"/>
+      <stop offset="1" stop-color="#1a4f8f"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+
+  <!-- The routes themselves. Drawn under the nodes so the joins stay clean. -->
+  <g fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity="0.95">
+    <path d="M64 46 L64 66 L38 84"/>
+    <path d="M64 66 L90 84"/>
+  </g>
+
+  <!-- Inbound. -->
+  <circle cx="64" cy="34" r="13" fill="#ffffff"/>
+  <circle cx="64" cy="34" r="5.5" fill="#1a4f8f"/>
+
+  <!-- Outbound routes. -->
+  <circle cx="38" cy="92" r="11" fill="#ffffff"/>
+  <circle cx="38" cy="92" r="4.5" fill="#1a4f8f"/>
+  <circle cx="90" cy="92" r="11" fill="#ffffff"/>
+  <circle cx="90" cy="92" r="4.5" fill="#1a4f8f"/>
+</svg>

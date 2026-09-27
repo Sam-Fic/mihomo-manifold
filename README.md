@@ -162,6 +162,41 @@ none of it is reachable from the network.
 Subscription URLs contain access tokens and are stored in plain 0600 files, not
 in a keyring — the core needs them in the clear anyway.
 
+## Installing on Debian and Ubuntu
+
+Releases carry a `.deb` that is self-contained: the GUI, the mihomo core it
+drives, the desktop entry and the icons.
+
+```sh
+sudo apt install ./mihomo-manifold_0.1.0_amd64.deb
+```
+
+The core is installed at `/usr/lib/mihomo-manifold/mihomo` and `postinst` grants
+it `cap_net_admin,cap_net_raw,cap_net_bind_service`, so TUN works from the first
+launch and the GUI itself never runs as root. A wrapper in `/usr/bin` points the
+GUI at that core; set `MIHOMO_MANIFOLD_CORE` to override it.
+
+Building the package needs the same GTK the app compiles against — 4.18 or
+newer, which rules out Ubuntu 24.04 — plus `dpkg-dev` and `librsvg2-bin`:
+
+```sh
+cargo build --release
+packaging/build-deb.sh          # -> result/mihomo-manifold_<version>_<arch>.deb
+```
+
+`MIHOMO_VERSION` pins the core and defaults to the version in the table below.
+It is deliberately independent of the app's own version: a new core is a
+security decision, not something a GUI rebuild should pull in silently. Set
+`MIHOMO_BIN` to package an already-downloaded core instead, which is what the
+offline path and the tests use.
+
+`.github/workflows/deb.yml` runs the same script on every push, and publishes a
+GitHub release when a `v*` tag appears. The tag has to match the version in
+`Cargo.toml`; the workflow fails loudly if it does not. The runner is pinned to
+`ubuntu-26.04` rather than `ubuntu-latest`, because `ubuntu-latest` only moves
+to 26.04 during a two-month migration window and this build must not change
+underneath a tag.
+
 ## Development
 
 ```sh
