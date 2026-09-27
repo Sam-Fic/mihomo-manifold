@@ -102,18 +102,18 @@ fn dns_section(cfg: &AppConfig) -> Value {
     put(
         &mut dns,
         "default-nameserver",
-        strings(["1.1.1.1", "8.8.8.8"]),
+        strings(["223.5.5.5", "119.29.29.29"]),
     );
     put(
         &mut dns,
         "nameserver",
-        strings(["https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"]),
+        strings(["https://223.5.5.5/dns-query", "https://doh.pub/dns-query"]),
     );
     // Resolving the node hostnames themselves must not go through the tunnel.
     put(
         &mut dns,
         "proxy-server-nameserver",
-        strings(["https://1.1.1.1/dns-query"]),
+        strings(["https://223.5.5.5/dns-query", "https://doh.pub/dns-query"]),
     );
     Value::Mapping(dns)
 }
