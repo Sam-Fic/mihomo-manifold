@@ -5,9 +5,10 @@
 use adw::prelude::*;
 use std::rc::Rc;
 
+use crate::autostart;
 use crate::config::HwidMode;
 use crate::corectl;
-use crate::i18n::{self, t};
+use crate::i18n::{self, t, tf};
 use crate::resolver;
 use crate::runtime;
 use crate::state::{self, AppState};
@@ -292,6 +293,57 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
             autostart_state.save();
         });
         core_group.add(&autostart);
+
+        let on_login = adw::SwitchRow::builder()
+            .title(t("Start on login"))
+            .subtitle(t("Launch MihomoManifold when you log in to the desktop"))
+            .build();
+        on_login.set_active(autostart::is_enabled());
+        if let Some(unit) = autostart::conflicting_unit() {
+            if autostart::unit_is_enabled(&unit) {
+                on_login.set_subtitle(&tf(
+                    "Also enabled as the systemd user unit {}; \
+                     disable one of the two or the app will start twice.",
+                    &[&unit],
+                ));
+            }
+        }
+        let on_login_state = state.clone();
+        on_login.connect_active_notify(move |row| {
+            if on_login_state.is_refreshing() {
+                return;
+            }
+            let wanted = row.is_active();
+            row.set_sensitive(false);
+            let row = row.clone();
+            let done_state = on_login_state.clone();
+            runtime::spawn(
+                async move {
+                    let outcome = if wanted {
+                        autostart::enable()
+                    } else {
+                        autostart::disable()
+                    };
+                    (wanted, outcome)
+                },
+                move |(wanted, outcome)| {
+                    match &outcome {
+                        Ok(()) => done_state.toast(if wanted {
+                            "MihomoManifold will start when you log in."
+                        } else {
+                            "MihomoManifold will no longer start automatically."
+                        }),
+                        Err(err) => {
+                            done_state.toast(&tf("Could not change the login item: {}.", &[&err.to_string()]));
+                        }
+                    }
+                    row.set_sensitive(true);
+                    // The file on disk is the truth, so let the row say so.
+                    done_state.notify();
+                },
+            );
+        });
+        core_group.add(&on_login);
         content.append(&core_group);
 
         // ---------------------------------------------------------- tun

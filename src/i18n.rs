@@ -355,6 +355,27 @@ const ZH: &[(&str, &str)] = &[
     ("Let other machines use this proxy port", "允许局域网内其他设备使用该代理端口"),
     ("IPv6", "IPv6"),
     ("Start the core when the app opens", "应用启动时自动启动内核"),
+    ("Start on login", "开机自启"),
+    (
+        "Launch MihomoManifold when you log in to the desktop",
+        "登录桌面时启动 MihomoManifold",
+    ),
+    (
+        "Also enabled as the systemd user unit {}; disable one of the two or the app will start twice.",
+        "同时已通过 systemd 用户单元 {} 启用；请禁用其中一个，否则应用会启动两次。",
+    ),
+    (
+        "MihomoManifold will start when you log in.",
+        "登录时将自动启动 MihomoManifold。",
+    ),
+    (
+        "MihomoManifold will no longer start automatically.",
+        "MihomoManifold 将不再自动启动。",
+    ),
+    (
+        "Could not change the login item: {}.",
+        "无法更改登录项：{}。",
+    ),
     (
         "Start the core without a password prompt",
         "启动内核时不弹密码框",
@@ -501,6 +522,24 @@ mod tests {
         // Extra or missing placeholders must not corrupt the text.
         assert_eq!(fill("a {} b", &[&1, &2]), "a 1 b");
         assert_eq!(fill("a {} b {}", &[&1]), "a 1 b ");
+    }
+
+    #[test]
+    fn the_login_item_wording_is_translated() {
+        // English source text is the lookup key, so a string added to the UI
+        // without a table entry silently falls back to English.
+        assert_eq!(translate(Lang::Zh, "Start on login"), "开机自启");
+        assert_eq!(
+            translate(Lang::Zh, "MihomoManifold will start when you log in."),
+            "登录时将自动启动 MihomoManifold。"
+        );
+        assert_eq!(
+            fill(
+                translate(Lang::Zh, "Could not change the login item: {}."),
+                &[&"read-only"]
+            ),
+            "无法更改登录项：read-only。"
+        );
     }
 
     #[test]

@@ -1,6 +1,7 @@
 //! MihomoManifold — a GTK4/libadwaita front-end for the mihomo proxy core.
 
 mod api;
+mod autostart;
 mod config;
 mod corectl;
 mod hwid;

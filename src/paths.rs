@@ -21,7 +21,11 @@ fn xdg(var: &str, fallback: &str) -> PathBuf {
 }
 
 pub fn config_dir() -> PathBuf {
-    xdg("XDG_CONFIG_HOME", ".config").join("mihomo-manifold")
+    xdg_config_home().join("mihomo-manifold")
+}
+
+pub fn xdg_config_home() -> PathBuf {
+    xdg("XDG_CONFIG_HOME", ".config")
 }
 
 pub fn state_dir() -> PathBuf {
@@ -55,6 +59,15 @@ pub fn generated_config() -> PathBuf {
 
 pub fn core_log() -> PathBuf {
     state_dir().join("core.log")
+}
+
+/// The XDG autostart entry, which is what "start on login" means for a desktop
+/// application. Not private: it holds no secrets and has to be readable by the
+/// session's autostart machinery.
+pub fn autostart_file() -> PathBuf {
+    xdg("XDG_CONFIG_HOME", ".config")
+        .join("autostart")
+        .join(format!("{}.desktop", crate::APP_ID))
 }
 
 /// Create a directory tree with 0700 on every component we own.
