@@ -14,6 +14,10 @@ use crate::paths;
 
 static CHILD: Mutex<Option<Child>> = Mutex::new(None);
 
+/// The temporary test core, kept apart from `CHILD` on purpose: it carries no
+/// TUN and serves no traffic, so nothing may mistake it for "the core is up".
+static SCRATCH: Mutex<Option<Child>> = Mutex::new(None);
+
 /// Where the NixOS module installs the capability wrapper for the core.
 pub const NIXOS_WRAPPER: &str = "/run/wrappers/bin/mihomo";
 
@@ -200,6 +204,71 @@ pub fn stop() -> bool {
     }
 }
 
+/// PID of the temporary test core, if one is alive. Reaps it if it died on its
+/// own, the same way `is_child_alive` does for the real one.
+pub fn scratch_pid() -> Option<u32> {
+    let mut guard = SCRATCH.lock().unwrap();
+    match guard.as_mut() {
+        Some(child) => match child.try_wait() {
+            Ok(None) => Some(child.id()),
+            _ => {
+                *guard = None;
+                None
+            }
+        },
+        None => None,
+    }
+}
+
+/// Start the throwaway core an offline latency test talks to. The caller has
+/// already picked the ports and written them into `generated_yaml`.
+pub fn start_scratch(cfg: &AppConfig, generated_yaml: &str) -> Result<()> {
+    stop_scratch();
+
+    let dir = paths::core_dir();
+    paths::ensure_dir(&dir).context("creating the core working directory")?;
+    let config_path = paths::scratch_config();
+    paths::write_private(&config_path, generated_yaml).context("writing the scratch config")?;
+
+    let binary = cfg.core.resolve_binary();
+    let resolved = which(&binary).ok_or_else(|| {
+        anyhow!(tf(
+            "mihomo binary not found: {}\nSet its path in Settings.",
+            &[&binary],
+        ))
+    })?;
+
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(paths::scratch_log())
+        .context("opening the scratch log")?;
+    let log_err = log.try_clone()?;
+
+    let child = Command::new(&resolved)
+        .arg("-d")
+        .arg(&dir)
+        .arg("-f")
+        .arg(&config_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(log))
+        .stderr(Stdio::from(log_err))
+        .spawn()
+        .with_context(|| format!("starting {resolved}"))?;
+
+    *SCRATCH.lock().unwrap() = Some(child);
+    Ok(())
+}
+
+/// Stop the temporary core. Safe to call when none is running.
+pub fn stop_scratch() {
+    let mut guard = SCRATCH.lock().unwrap();
+    if let Some(mut child) = guard.take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+
 /// Last lines of the core log, for the "it would not start" case.
 pub fn tail_log(lines: usize) -> String {
     let Ok(content) = std::fs::read_to_string(paths::core_log()) else {
@@ -265,6 +334,9 @@ pub fn external_cores(binary: &str) -> Vec<u32> {
     };
     let me = std::process::id();
     let me_uid = real_uid(me);
+    // A running test core is ours and short-lived; it must not be swept up as
+    // an "external" core just because it shares the binary path.
+    let scratch = scratch_pid();
     let want = Path::new(binary)
         .canonicalize()
         .unwrap_or_else(|_| Path::new(binary).to_path_buf());
@@ -279,7 +351,7 @@ pub fn external_cores(binary: &str) -> Vec<u32> {
         else {
             continue;
         };
-        if pid == me || real_uid(pid) != me_uid {
+        if pid == me || real_uid(pid) != me_uid || Some(pid) == scratch {
             continue;
         }
         let Ok(raw) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
@@ -327,10 +399,57 @@ pub fn stop_external(binary: &str) -> Vec<u32> {
     pids
 }
 
+/// PIDs running as the same user as this process.
+fn own_uid_pids() -> Vec<u32> {
+    let me_uid = real_uid(std::process::id());
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .and_then(|name| name.parse::<u32>().ok())
+        })
+        .filter(|pid| real_uid(*pid) == me_uid)
+        .collect()
+}
+
+/// Sweep a test core left behind by a run that died mid-test. It is harmless on
+/// its own — no TUN, no traffic — but it holds ports and shows up as a core, so
+/// it does not get to outlive the app that started it.
+pub fn cleanup_scratch() {
+    let path = paths::scratch_config().to_string_lossy().into_owned();
+    let scratch = scratch_pid();
+    for pid in own_uid_pids() {
+        if pid == std::process::id() || Some(pid) == scratch {
+            continue;
+        }
+        let Ok(raw) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
+            continue;
+        };
+        let cmdline = String::from_utf8_lossy(&raw);
+        if cmdline.split('\0').any(|arg| arg == path) {
+            signal(pid, "TERM");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::ErrorKind;
+
+    #[test]
+    fn a_scratch_core_is_never_an_external_one() {
+        // `stop_external` matching on argv[0] would otherwise let "turn the core
+        // off" kill a latency test mid-flight.
+        assert!(external_cores("/nonexistent/definitely-not-here").is_empty());
+        assert!(scratch_pid().is_none());
+        stop_scratch();
+    }
 
     #[test]
     fn external_core_matching_is_strict_where_it_can_be() {

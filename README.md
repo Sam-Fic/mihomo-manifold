@@ -22,7 +22,11 @@ hides.
   destination (domain, suffix, keyword, regex, IP-CIDR, GEOIP, GEOSITE, port),
   by remote rule provider, plus a raw block for anything the UI does not model.
 - **Live control.** Node picker with per-group latency tests, traffic graph and
-  the core log, all over the external controller.
+  the core log, all over the external controller. With the core stopped the node
+  list is instead expanded from the cached profile, so it stays browsable, and a
+  node picked there is applied when the core next starts. A latency test in that
+  state spins up a throwaway core for the measurement — no TUN, loopback ports,
+  torn down the moment it is done, so the real core stays off.
 
 ### Rule order
 
@@ -157,7 +161,9 @@ none of it is reachable from the network.
 | `$XDG_CONFIG_HOME/mihomo-manifold/defaults.json` | declarative defaults from home-manager |
 | `$XDG_STATE_HOME/mihomo-manifold/profiles/*.yaml` | downloaded subscriptions (0600) |
 | `$XDG_STATE_HOME/mihomo-manifold/core/config.yaml` | the generated config |
+| `$XDG_STATE_HOME/mihomo-manifold/core/scratch.yaml` | the throwaway config a latency test gives the temporary core |
 | `$XDG_STATE_HOME/mihomo-manifold/core.log` | core stdout/stderr |
+| `$XDG_STATE_HOME/mihomo-manifold/scratch.log` | temporary test core stdout/stderr |
 
 Subscription URLs contain access tokens and are stored in plain 0600 files, not
 in a keyring — the core needs them in the clear anyway.

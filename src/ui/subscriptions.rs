@@ -182,6 +182,9 @@ fn confirm_delete(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>, id: Stri
             }
         }
         state.commit();
+        if state.is_running() {
+            state::apply(&state);
+        }
     });
     dialog.present(Some(parent.as_ref()));
 }
@@ -276,6 +279,9 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
                 }
                 select_state.config.borrow_mut().active_subscription = Some(select_id.clone());
                 select_state.commit();
+                if select_state.is_running() {
+                    state::apply(&select_state);
+                }
             });
             row.add_prefix(&selector);
 

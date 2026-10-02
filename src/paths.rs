@@ -57,8 +57,21 @@ pub fn generated_config() -> PathBuf {
     core_dir().join("config.yaml")
 }
 
+/// The throwaway config a temporary core is started with for offline latency
+/// tests. Lives in the same `-d` directory as the real one so it reuses the
+/// geodata files instead of downloading them again.
+pub fn scratch_config() -> PathBuf {
+    core_dir().join("scratch.yaml")
+}
+
 pub fn core_log() -> PathBuf {
     state_dir().join("core.log")
+}
+
+/// A temporary test core gets its own log, so its startup noise never shows up
+/// in the Logs page or the "it would not start" tail.
+pub fn scratch_log() -> PathBuf {
+    state_dir().join("scratch.log")
 }
 
 /// The XDG autostart entry, which is what "start on login" means for a desktop

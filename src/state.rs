@@ -4,6 +4,7 @@
 
 use adw::prelude::*;
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::api::ClashApi;
@@ -22,6 +23,12 @@ pub struct AppState {
     toaster: RefCell<Option<adw::ToastOverlay>>,
     /// Set while a page rebuilds itself, so widget signals do not write back.
     refreshing: Cell<bool>,
+    /// Offline latency results by node name, from the temporary test core. The
+    /// live page reads the controller instead; this is only used with the core
+    /// stopped.
+    pub delays: RefCell<HashMap<String, u32>>,
+    /// The group a temporary test core is measuring right now, if any.
+    pub testing: RefCell<Option<String>>,
 }
 
 impl AppState {
@@ -35,6 +42,8 @@ impl AppState {
             listeners: RefCell::new(Vec::new()),
             toaster: RefCell::new(None),
             refreshing: Cell::new(false),
+            delays: RefCell::new(HashMap::new()),
+            testing: RefCell::new(None),
         })
     }
 
@@ -157,6 +166,10 @@ pub fn apply(state: &Rc<AppState>) {
         return;
     }
 
+    // A test core shares the working directory with the real one; let it go
+    // before the real one opens the same cache.db.
+    core::stop_scratch();
+
     let cfg_snapshot = state.config.borrow().clone();
     if cfg_snapshot.core.tun_enabled {
         if let Some(warning) = core::tun_readiness(&cfg_snapshot.core.resolve_binary()).warning() {
@@ -194,6 +207,8 @@ pub fn apply(state: &Rc<AppState>) {
                 sync_system_proxy(&state);
                 state.toast(t("Core started"));
                 state.notify();
+                // A node picked while the core was down has never reached it.
+                replay_selections(&state);
             }
             Err(err) => {
                 let tail = core::tail_log(12);
@@ -306,6 +321,238 @@ pub fn refresh_status(state: &Rc<AppState>) {
     });
 }
 
+/// Remember a node choice. When the core is up it is told immediately; when it
+/// is stopped the choice is kept for the next start, which is what
+/// [`replay_selections`] pushes once the controller answers.
+pub fn select_node(state: &Rc<AppState>, group: &str, node: &str) {
+    state
+        .config
+        .borrow_mut()
+        .selected
+        .insert(group.to_string(), node.to_string());
+    state.save();
+
+    if !state.is_running() {
+        state.notify();
+        state.toast(t("Saved — applied when the core starts."));
+        return;
+    }
+
+    let Some(api) = state.api() else {
+        state.notify();
+        return;
+    };
+    let (group, node) = (group.to_string(), node.to_string());
+    let state = state.clone();
+    runtime::spawn(
+        async move { api.select(&group, &node).await.map_err(|e| e.to_string()) },
+        move |result| match result {
+            Ok(()) => state.notify(),
+            Err(err) => state.toast(&tf("Could not switch node: {}", &[&err])),
+        },
+    );
+}
+
+/// Keep the app's idea of the current node in step with the core, so the Nodes
+/// page still shows it after the core is stopped. Written only when it actually
+/// changed: this runs on every rebuild of that page.
+pub fn note_selection(state: &Rc<AppState>, group: &str, node: &str) {
+    let changed = {
+        let mut cfg = state.config.borrow_mut();
+        if cfg.selected.get(group).map(String::as_str) == Some(node) {
+            false
+        } else {
+            cfg.selected.insert(group.to_string(), node.to_string());
+            true
+        }
+    };
+    if changed {
+        state.save();
+    }
+}
+
+/// Push node choices made while the core was stopped. `store-selected` only
+/// remembers what the core itself was told, so a pick made offline has to be
+/// re-sent before the pages read the controller's view.
+fn replay_selections(state: &Rc<AppState>) {
+    let wanted: Vec<(String, String)> = {
+        let cfg = state.config.borrow();
+        let groups = cfg.routing.group_names();
+        cfg.selected
+            .iter()
+            .filter(|(group, _)| groups.iter().any(|g| g == *group))
+            .map(|(group, node)| (group.clone(), node.clone()))
+            .collect()
+    };
+    if wanted.is_empty() {
+        return;
+    }
+    let Some(api) = state.api() else { return };
+
+    let state = state.clone();
+    runtime::spawn(
+        async move {
+            for (group, node) in wanted {
+                // A group that does not take a manual pick simply refuses; the
+                // offline choice just does not stick, and there is nothing to
+                // report about it.
+                let _ = api.select(&group, &node).await;
+            }
+        },
+        move |()| state.notify(),
+    );
+}
+
+// ---------------------------------------------------------------- latency
+
+/// The URL a delay test fetches through each node. The live page sends the same
+/// one to the controller.
+pub const TEST_URL: &str = "https://cp.cloudflare.com/generate_204";
+pub const TEST_TIMEOUT_MS: u32 = 3000;
+
+/// A port nothing is listening on right now. It is bound and released, so there
+/// is a brief race — the alternative is handing the core a socket we hold.
+fn free_port() -> Option<u16> {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .ok()?
+        .local_addr()
+        .ok()
+        .map(|addr| addr.port())
+}
+
+/// Stops the temporary core when the test returns, however it returns.
+struct ScratchGuard;
+
+impl Drop for ScratchGuard {
+    fn drop(&mut self) {
+        core::stop_scratch();
+    }
+}
+
+/// Measure one group through a throwaway core, so a node can be judged without
+/// turning the real one on. Nothing here touches the system: the test core has
+/// no TUN, binds loopback ports only and serves no traffic.
+pub fn test_group_offline(state: &Rc<AppState>, group: &str) {
+    if state.is_running() || state.testing.borrow().is_some() {
+        return;
+    }
+
+    let proxies = match active_proxies(state) {
+        Ok(proxies) => proxies,
+        Err(err) => {
+            state.toast(&err);
+            return;
+        }
+    };
+    let (cfg, secret) = {
+        let cfg = state.config.borrow();
+        (cfg.clone(), cfg.core.secret.clone())
+    };
+
+    // Two distinct ports; a collision would leave the controller unreachable.
+    let (Some(controller_port), Some(mixed_port)) = (free_port(), free_port()) else {
+        state.toast(t("Could not find a free port for the test core."));
+        return;
+    };
+
+    *state.testing.borrow_mut() = Some(group.to_string());
+    state.notify();
+    state.toast(t("Testing through a temporary core…"));
+
+    let state = state.clone();
+    let group = group.to_string();
+    runtime::spawn(
+        run_scratch_test(cfg, proxies, controller_port, mixed_port, secret, group),
+        move |result| {
+            *state.testing.borrow_mut() = None;
+            match result {
+                Ok(delays) => {
+                    let answered = delays.values().any(|delay| *delay > 0);
+                    state.delays.borrow_mut().extend(delays);
+                    state.notify();
+                    if !answered {
+                        state.toast(t("No node answered the latency test."));
+                    }
+                }
+                Err(err) => {
+                    state.notify();
+                    state.toast(&tf("Latency test failed: {}", &[&err]));
+                }
+            }
+        },
+    );
+}
+
+/// The whole offline test as one future: bring up the throwaway core, wait for
+/// its controller and ask it for the group's delays. Kept separate from the UI
+/// plumbing so it can also be driven headlessly.
+pub(crate) async fn run_scratch_test(
+    cfg: AppConfig,
+    proxies: Vec<serde_yaml::Value>,
+    controller_port: u16,
+    mixed_port: u16,
+    secret: String,
+    group: String,
+) -> Result<HashMap<String, u32>, String> {
+    let yaml = template::scratch_config(&cfg, &proxies, controller_port, mixed_port, &secret)
+        .map_err(|e| e.to_string())?;
+
+    core::start_scratch(&cfg, &yaml).map_err(|e| e.to_string())?;
+    let _guard = ScratchGuard;
+
+    let api = ClashApi::new(&format!("http://127.0.0.1:{controller_port}"), &secret)
+        .map_err(|e| e.to_string())?;
+
+    let mut ready = false;
+    for _ in 0..40 {
+        // `/version` answers as soon as the controller is bound, which can be
+        // before the configuration — and so the groups — are registered; the
+        // group endpoint fails until then. Readiness means the group is really
+        // there, not merely that the port answers.
+        match api.proxies().await {
+            Ok(response) if response.proxies.contains_key(&group) => {
+                ready = true;
+                break;
+            }
+            _ => tokio::time::sleep(std::time::Duration::from_millis(250)).await,
+        }
+    }
+    if !ready {
+        return Err(t("the test core did not load the proxy groups").to_string());
+    }
+
+    let delays = api
+        .group_delay(&group, TEST_URL, TEST_TIMEOUT_MS)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let groups = cfg.routing.group_names();
+    let members = template::group_views(&cfg, &proxies)
+        .into_iter()
+        .find(|view| view.name == group)
+        .map(|view| view.members)
+        .unwrap_or_default();
+
+    Ok(mark_failed(delays, &members, &groups))
+}
+
+/// The core omits nodes it could not reach, which would leave them looking
+/// untested. Record each as 0 — rendered as a timeout — so a run that failed is
+/// visibly different from one that never happened. Members that are themselves
+/// groups (AUTO) are not testable and are left untouched.
+fn mark_failed(
+    mut delays: HashMap<String, u32>,
+    members: &[String],
+    groups: &[String],
+) -> HashMap<String, u32> {
+    for member in members {
+        if !groups.contains(member) {
+            delays.entry(member.clone()).or_insert(0);
+        }
+    }
+    delays
+}
+
 /// Download one subscription and remember what the panel reported.
 pub fn update_subscription(state: &Rc<AppState>, id: &str, then_apply: bool) {
     let (sub, hwid) = {
@@ -349,6 +596,8 @@ pub fn update_subscription(state: &Rc<AppState>, id: &str, then_apply: bool) {
                 Ok(fetched) => {
                     state.toast(&tf("{} nodes downloaded", &[&fetched.proxies.len()]));
                     state.commit();
+                    // The nodes just changed; last run's measurements are moot.
+                    state.delays.borrow_mut().clear();
                     // Downloading only refreshes the file on disk. The core is
                     // still serving the nodes it was started with, so without a
                     // reload the new ones never reach the Nodes page.
@@ -401,4 +650,27 @@ fn show_device_limit(state: &Rc<AppState>, message: &str) {
         }
     }
     state.toast(message);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_nodes_are_recorded_as_timeouts() {
+        let members = vec![
+            "AUTO".to_string(),
+            "DIRECT".to_string(),
+            "n1".to_string(),
+            "n2".to_string(),
+        ];
+        let groups = vec!["PROXY".to_string(), "AUTO".to_string()];
+        let delays = HashMap::from([("n1".to_string(), 120u32)]);
+
+        let marked = mark_failed(delays, &members, &groups);
+        assert_eq!(marked.get("n1"), Some(&120)); // measured, kept as is
+        assert_eq!(marked.get("n2"), Some(&0)); // tested, unreachable
+        assert_eq!(marked.get("DIRECT"), Some(&0)); // a testable special
+        assert_eq!(marked.get("AUTO"), None); // a group, not a node
+    }
 }

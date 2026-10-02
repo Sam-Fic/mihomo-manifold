@@ -180,6 +180,23 @@ const ZH: &[(&str, &str)] = &[
     ),
     ("Controller unreachable", "无法连接控制端口"),
     ("Could not switch node: {}", "切换节点失败：{}"),
+    ("Saved — applied when the core starts.", "已保存 — 启动内核时生效。"),
+    (
+        "Core is not running — showing the nodes saved in the profile. Testing runs a temporary core; a pick is applied when the real one starts.",
+        "内核未运行 — 以下是从已保存的订阅中展开的节点。测速会临时启动一个内核；所选节点将在正式启动内核时生效。",
+    ),
+    ("No groups are configured yet.", "尚未配置任何代理组。"),
+    ("Testing through a temporary core…", "正在通过临时内核测速…"),
+    ("timeout", "超时"),
+    ("No node answered the latency test.", "没有节点响应本次测速。"),
+    (
+        "Could not find a free port for the test core.",
+        "找不到可供测试内核使用的空闲端口。",
+    ),
+    (
+        "the test core did not load the proxy groups",
+        "测试内核未能加载代理组",
+    ),
     // ---- 订阅页 ----
     ("Name", "名称"),
     ("Subscription", "订阅"),
@@ -522,6 +539,24 @@ mod tests {
         // Extra or missing placeholders must not corrupt the text.
         assert_eq!(fill("a {} b", &[&1, &2]), "a 1 b");
         assert_eq!(fill("a {} b {}", &[&1]), "a 1 b ");
+    }
+
+    #[test]
+    fn the_node_page_wording_is_translated() {
+        // The offline Nodes page added strings that only show with the core
+        // stopped, which is easy to miss when running the app.
+        for key in [
+            "Saved — applied when the core starts.",
+            "No groups are configured yet.",
+            "Testing through a temporary core…",
+            "timeout",
+            "No node answered the latency test.",
+            "Could not find a free port for the test core.",
+            "the test core did not load the proxy groups",
+            "Core is not running — showing the nodes saved in the profile. Testing runs a temporary core; a pick is applied when the real one starts.",
+        ] {
+            assert_ne!(translate(Lang::Zh, key), key, "missing zh for {key:?}");
+        }
     }
 
     #[test]

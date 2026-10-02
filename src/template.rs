@@ -3,6 +3,7 @@
 //! their profile can never rewrite the user's routing.
 
 use anyhow::{Context, Result};
+use regex::Regex;
 use serde_yaml::{Mapping, Value};
 
 use crate::config::{AppConfig, GroupKind};
@@ -53,6 +54,61 @@ pub fn proxy_names(proxies: &[Value]) -> Vec<String> {
         .iter()
         .filter_map(|p| p.get("name").and_then(Value::as_str).map(str::to_string))
         .collect()
+}
+
+/// A generated group with its members resolved. The Nodes page uses this when
+/// the core is not answering, so the list stays browsable instead of empty.
+pub struct GroupView {
+    pub name: String,
+    pub kind: GroupKind,
+    pub members: Vec<String>,
+}
+
+/// Expand every configured group against the cached profile, mirroring
+/// [`proxy_groups`]: same members in the same order, so the offline list and
+/// what the core reports once it starts agree.
+///
+/// A group with a `filter` is handed to the core as `include-all-proxies` plus
+/// that regex, so the same expression has to be applied here — a filter is only
+/// settable declaratively, but the offline list still has to honour it.
+pub fn group_views(cfg: &AppConfig, proxies: &[Value]) -> Vec<GroupView> {
+    let names = proxy_names(proxies);
+    let all_group_names = cfg.routing.group_names();
+    let mut views = Vec::new();
+
+    for spec in &cfg.routing.groups {
+        let mut members: Vec<String> = Vec::new();
+        if spec.include_specials {
+            members.extend(
+                all_group_names
+                    .iter()
+                    .filter(|n| n.as_str() != spec.name)
+                    .cloned(),
+            );
+            members.push("DIRECT".to_string());
+        }
+
+        let filter = spec.filter.trim();
+        if filter.is_empty() {
+            members.extend(names.iter().cloned());
+        } else if let Ok(re) = Regex::new(filter) {
+            members.extend(names.iter().filter(|name| re.is_match(name)).cloned());
+        }
+
+        // The core refuses a group with no members, so the generator falls back
+        // to DIRECT; the offline view has to show the same thing.
+        if members.is_empty() && filter.is_empty() {
+            members.push("DIRECT".to_string());
+        }
+
+        views.push(GroupView {
+            name: spec.name.clone(),
+            kind: spec.kind,
+            members,
+        });
+    }
+
+    views
 }
 
 fn tun_section(cfg: &AppConfig) -> Value {
@@ -304,6 +360,72 @@ pub fn generate(cfg: &AppConfig, proxies: &[Value]) -> Result<String> {
     serde_yaml::to_string(&Value::Mapping(root)).context("serializing generated config")
 }
 
+/// A throwaway config for the temporary core that measures latency while the
+/// real one is stopped. It carries only what a delay test needs: the nodes, one
+/// `select` group per configured group (so `/group/<name>/delay` resolves the
+/// same members the page lists), no TUN, no DNS and no routing rules. It must
+/// never grow into a second copy of [`generate`].
+///
+/// `profile` stores nothing: this core shares `-d` with the real one, and it has
+/// no business writing the selections held in `cache.db`.
+pub fn scratch_config(
+    cfg: &AppConfig,
+    proxies: &[Value],
+    controller_port: u16,
+    mixed_port: u16,
+    secret: &str,
+) -> Result<String> {
+    let mut root = Mapping::new();
+
+    put(&mut root, "mixed-port", v(mixed_port as u64));
+    put(&mut root, "allow-lan", v(false));
+    put(&mut root, "mode", v("rule"));
+    put(&mut root, "log-level", v("warning"));
+    put(
+        &mut root,
+        "external-controller",
+        v(format!("127.0.0.1:{controller_port}")),
+    );
+    put(&mut root, "secret", v(secret));
+
+    let mut profile = Mapping::new();
+    put(&mut profile, "store-selected", v(false));
+    put(&mut profile, "store-fake-ip", v(false));
+    put(&mut root, "profile", Value::Mapping(profile));
+
+    let proxies = with_fingerprint(proxies, &cfg.core.client_fingerprint);
+    put(&mut root, "proxies", seq(proxies.iter().cloned()));
+    put(&mut root, "proxy-groups", scratch_groups(cfg, &proxies));
+    put(&mut root, "rules", strings(["MATCH,DIRECT"]));
+
+    serde_yaml::to_string(&Value::Mapping(root)).context("serializing the scratch config")
+}
+
+/// The configured groups as plain `select` groups with explicit members, taken
+/// from [`group_views`]. That keeps a delay test resolving exactly what the Nodes
+/// page shows — filters included — and stops the core from running health checks
+/// of its own in the background.
+fn scratch_groups(cfg: &AppConfig, proxies: &[Value]) -> Value {
+    let groups = group_views(cfg, proxies)
+        .into_iter()
+        .map(|view| {
+            let mut group = Mapping::new();
+            put(&mut group, "name", v(view.name));
+            put(&mut group, "type", v("select"));
+            // An empty member list makes the core refuse to start, and a group
+            // that matches nothing has only DIRECT to fall back on anyway.
+            let members = if view.members.is_empty() {
+                vec!["DIRECT".to_string()]
+            } else {
+                view.members
+            };
+            put(&mut group, "proxies", strings(members));
+            Value::Mapping(group)
+        })
+        .collect();
+    Value::Sequence(groups)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,5 +503,64 @@ mod tests {
         assert!(yaml.contains("Amsterdam"));
         // Groups and rules are ours, not the provider's.
         assert!(parsed["proxy-groups"].as_sequence().unwrap().len() == 2);
+    }
+
+    #[test]
+    fn offline_groups_mirror_the_generated_ones() {
+        let mut cfg = AppConfig::default();
+        // Give AUTO a filter; PROXY keeps the default "every node".
+        cfg.routing.groups[1].filter = "(?i)hk".to_string();
+        let nodes = [node("HK-1"), node("HK-2"), node("US-1")];
+        let views = group_views(&cfg, &nodes);
+
+        assert_eq!(views[0].name, "PROXY");
+        assert_eq!(views[0].kind.as_core_type(), "Selector");
+        // Specials come first, exactly as `proxy_groups` writes them.
+        assert_eq!(views[0].members[0], "AUTO");
+        assert_eq!(views[0].members[1], "DIRECT");
+        assert!(views[0].members.contains(&"US-1".to_string()));
+
+        assert_eq!(views[1].name, "AUTO");
+        assert_eq!(views[1].members, vec!["HK-1", "HK-2"]);
+    }
+
+    #[test]
+    fn scratch_config_is_minimal_and_testable() {
+        let cfg = AppConfig::default();
+        let yaml = scratch_config(&cfg, &[node("A"), node("B")], 9099, 7891, "s3cret").unwrap();
+        let parsed: Value = serde_yaml::from_str(&yaml).unwrap();
+
+        // Nothing that would touch the system: no tunnel, no DNS, no routing.
+        assert!(parsed.get("tun").is_none());
+        assert!(parsed.get("dns").is_none());
+        assert_eq!(
+            parsed["rules"].as_sequence().unwrap()[0].as_str(),
+            Some("MATCH,DIRECT")
+        );
+        assert_eq!(parsed["external-controller"], v("127.0.0.1:9099"));
+
+        // Members are explicit, so a filtered group resolves here rather than
+        // through include-all-proxies once the core starts.
+        let groups = parsed["proxy-groups"].as_sequence().unwrap();
+        assert_eq!(groups[0]["name"], v("PROXY"));
+        assert_eq!(groups[0]["type"], v("select"));
+        assert!(groups[0]["proxies"]
+            .as_sequence()
+            .unwrap()
+            .iter()
+            .any(|member| member.as_str() == Some("A")));
+
+        // It shares the working directory with the real core, so it must not
+        // write the selections stored there.
+        assert_eq!(parsed["profile"]["store-selected"], v(false));
+    }
+
+    #[test]
+    fn offline_groups_keep_an_empty_filtered_group_usable() {
+        let mut cfg = AppConfig::default();
+        cfg.routing.groups[1].filter = "(?i)nowhere".to_string();
+        let views = group_views(&cfg, &[node("HK-1")]);
+        // No node matches, and the generator does not add DIRECT for a filter.
+        assert!(views[1].members.is_empty());
     }
 }

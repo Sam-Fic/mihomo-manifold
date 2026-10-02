@@ -45,6 +45,9 @@ fn main() -> gtk::glib::ExitCode {
         };
     }
 
+    // Sweep a test core a previous run may have left behind.
+    corectl::cleanup_scratch();
+
     let app = adw::Application::builder().application_id(APP_ID).build();
 
     // Launching the app again reaches the running instance as another
@@ -60,6 +63,7 @@ fn main() -> gtk::glib::ExitCode {
     // Never leave a core behind when the GUI goes away.
     app.connect_shutdown(|_| {
         corectl::stop();
+        corectl::stop_scratch();
     });
 
     app.run()

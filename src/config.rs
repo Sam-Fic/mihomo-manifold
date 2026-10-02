@@ -24,6 +24,11 @@ pub struct AppConfig {
     pub subscriptions: Vec<Subscription>,
     pub active_subscription: Option<String>,
     pub routing: RoutingSettings,
+    /// The node last picked in each group. The core keeps its own copy in
+    /// `cache.db` through `store-selected`, but a choice made while the core is
+    /// stopped exists only here until it starts again — see
+    /// `state::replay_selections`.
+    pub selected: BTreeMap<String, String>,
 }
 
 // ---------------------------------------------------------------- core
@@ -456,6 +461,17 @@ impl GroupKind {
             GroupKind::LoadBalance => "load-balance",
         }
     }
+
+    /// The `type` the core reports for this kind. The Nodes page prints it in
+    /// both states, so the offline list does not disagree with the live one.
+    pub fn as_core_type(&self) -> &'static str {
+        match self {
+            GroupKind::Select => "Selector",
+            GroupKind::UrlTest => "URLTest",
+            GroupKind::Fallback => "Fallback",
+            GroupKind::LoadBalance => "LoadBalance",
+        }
+    }
 }
 
 /// A proxy group we generate. Nodes come from the subscription, everything
@@ -683,6 +699,15 @@ mod tests {
         let full = serde_json::json!({ "core": { "mixed_port": 7890 } });
         let pruned = prune(full.clone(), &Value::Object(Default::default()));
         assert_eq!(pruned, full);
+    }
+
+    #[test]
+    fn a_remembered_node_survives_a_round_trip() {
+        let mut cfg = AppConfig::default();
+        cfg.selected.insert("PROXY".into(), "HK-1".into());
+        let json = serde_json::to_value(&cfg).unwrap();
+        let back: AppConfig = serde_json::from_value(json).unwrap();
+        assert_eq!(back.selected.get("PROXY").map(String::as_str), Some("HK-1"));
     }
 
     #[test]
