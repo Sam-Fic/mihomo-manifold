@@ -4,6 +4,7 @@ use adw::prelude::*;
 
 use crate::config::Target;
 use crate::i18n::t;
+use crate::ui::style;
 
 pub fn icon_button(icon: &str, tooltip: &str) -> gtk::Button {
     let button = gtk::Button::from_icon_name(icon);
@@ -182,7 +183,9 @@ pub fn text_area(initial: &str, monospace: bool) -> (gtk::ScrolledWindow, gtk::T
         .height_request(140)
         .child(&view)
         .build();
-    scroller.add_css_class("card");
+    // Same frame as the log view: a GtkTextView paints its own background over
+    // the parent's rounded corners (see src/ui/style.rs).
+    scroller.add_css_class(style::TEXT_FRAME);
     (scroller, view)
 }
 

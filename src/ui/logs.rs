@@ -10,6 +10,7 @@ use crate::api::LogLine;
 use crate::i18n::t;
 use crate::runtime;
 use crate::state::AppState;
+use crate::ui::style;
 use crate::ui::widgets;
 
 const CAPACITY: usize = 2000;
@@ -119,9 +120,16 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
 
     let scroller = gtk::ScrolledWindow::builder()
         .vexpand(true)
+        // Cap the height so the frame does not stretch into a second scroll
+        // region on a tall window; past this the text view scrolls inside the
+        // frame, the way the log view already did.
+        .max_content_height(320)
+        .propagate_natural_height(true)
         .child(&view)
         .build();
-    scroller.add_css_class("card");
+    // Explicit frame instead of libadwaita's `.card`: a GtkTextView paints its
+    // own background over the parent's rounded corners (see src/ui/style.rs).
+    scroller.add_css_class(style::TEXT_FRAME);
     container.append(&scroller);
 
     let hint = widgets::dim_label(t(

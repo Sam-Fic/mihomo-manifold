@@ -6,6 +6,7 @@ mod logs;
 mod proxies;
 mod routing;
 mod settings;
+mod style;
 mod subscriptions;
 mod widgets;
 
@@ -16,6 +17,9 @@ use crate::i18n::t;
 use crate::state::{self, AppState};
 
 pub fn build_window(app: &adw::Application) {
+    // Before any widget is built, so the first paint already has the rules.
+    style::install();
+
     let state = AppState::new();
 
     let window = adw::ApplicationWindow::builder()
