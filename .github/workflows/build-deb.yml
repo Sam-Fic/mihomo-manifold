@@ -66,7 +66,20 @@ jobs:
           grep -q 'usr/lib/mihomo-manifold/mihomo' package-contents.txt
           grep -q 'usr/share/applications/io.github.cublae.MihomoManifold.desktop' package-contents.txt
           grep -q 'usr/share/icons/hicolor/scalable/apps/io.github.cublae.MihomoManifold.svg' package-contents.txt
-          test "$(grep -c 'hicolor/[0-9]*x[0-9]*/apps/io.github.cublae.MihomoManifold.png' package-contents.txt)" -eq 8
+          # Derive the expected count from the script instead of hardcoding it:
+          # the list grew when 96/192 were added for fractional-scale displays,
+          # and a literal here silently turns a packaging change into a red CI
+          # run that has nothing to do with the actual defect.
+          expected_sizes="$(sed -n 's/^ICON_SIZES="\(.*\)"$/\1/p' packaging/build-deb.sh)"
+          test -n "$expected_sizes" || { echo 'ICON_SIZES not found in packaging/build-deb.sh' >&2; exit 1; }
+          expected_count=0
+          for size in $expected_sizes; do
+            grep -q "usr/share/icons/hicolor/${size}x${size}/apps/io.github.cublae.MihomoManifold.png" package-contents.txt
+            expected_count=$((expected_count + 1))
+          done
+          actual_count="$(grep -c 'hicolor/[0-9]*x[0-9]*/apps/io.github.cublae.MihomoManifold.png' package-contents.txt)"
+          test "$actual_count" -eq "$expected_count"
+          echo "icons: $actual_count sizes"
 
           (cd result && sha256sum ./*.deb) > result/SHA256SUMS
           cat result/SHA256SUMS

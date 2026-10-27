@@ -60,7 +60,18 @@ if [ -n "${MIHOMO_BIN:-}" ]; then
     # Escape hatch for offline builds and for testing the packaging without
     # spending 20 MB of bandwidth on the same core twice.
     say "using existing core $MIHOMO_BIN"
-    install -m 755 "$MIHOMO_BIN" "$BUILD/mihomo"
+    [ -f "$MIHOMO_BIN" ] || die "MIHOMO_BIN does not exist: $MIHOMO_BIN"
+    # `install` refuses to copy a file onto itself ("are the same file"), and
+    # pointing MIHOMO_BIN at $BUILD/mihomo is the obvious thing to do when the
+    # core is already staged -- which is exactly the offline case this escape
+    # hatch exists for. Compare the resolved paths and skip the copy if they
+    # are the same file; chmod below brings the mode in line either way.
+    if [ "$(realpath -m -- "$MIHOMO_BIN")" = "$(realpath -m -- "$BUILD/mihomo")" ]; then
+        say "core already in place, leaving it there"
+    else
+        install -m 755 -- "$MIHOMO_BIN" "$BUILD/mihomo"
+    fi
+    chmod 755 "$BUILD/mihomo"
 elif [ ! -x "$BUILD/mihomo" ]; then
     have curl || die "curl is required"
     say "downloading $MIHOMO_URL"
@@ -76,6 +87,19 @@ fi
 
 ICON_SRC=$ROOT/data/icons/$APP_ID.svg
 [ -f "$ICON_SRC" ] || die "icon missing: $ICON_SRC"
+
+# gdk-pixbuf sniffs only the first 256 bytes of a file to decide whether it is
+# an SVG. A header comment long enough to push "<svg" past that mark makes the
+# icon look valid to rsvg-convert (which parses the whole document) but
+# invisible to the shell, which is a miserable bug to diagnose from the outside:
+# the icon is installed, `has_icon` is true, and the tile is still blank.
+# Fail the build instead.
+svg_offset=$(LC_ALL=C grep -abo '<svg' "$ICON_SRC" | head -1 | cut -d: -f1)
+[ -n "$svg_offset" ] || die "no <svg> tag in $ICON_SRC"
+if [ "$svg_offset" -ge 256 ]; then
+    die "<svg> starts at byte $svg_offset in $APP_ID.svg (must be < 256); move the header comment below the <svg> tag"
+fi
+
 say "rendering icons"
 # rsvg-convert keeps the geometry honest at small sizes; ImageMagick's built-in
 # SVG reader drops everything after the first element.
@@ -92,7 +116,13 @@ elif python3 -c 'import cairosvg' 2>/dev/null; then
 else
     die "need rsvg-convert (librsvg2-bin) or python3-cairosvg to render the icon"
 fi
-for size in 16 24 32 48 64 128 256 512; do
+# Sizes matter more than they look: the icon theme picks the smallest entry at
+# least size*scale, so on a fractional-scale display (1.666x here: a 48px dock
+# icon asks for 80px) a gap between 64 and 128 forces a fallback to the
+# scalable SVG. 96 and 192 close the gaps at 2x/3x as well, so the shell almost
+# never needs the SVG.
+ICON_SIZES="16 24 32 48 64 96 128 192 256 512"
+for size in $ICON_SIZES; do
     mkdir -p "$BUILD/icons"
     render "$size" "$BUILD/icons/$size.png"
 done
@@ -120,7 +150,7 @@ chmod 755 "$DEST/usr/bin/$PKG"
 
 install -m 644 "$ROOT/data/$APP_ID.desktop" "$DEST/usr/share/applications/$APP_ID.desktop"
 install -Dm644 "$ICON_SRC" "$DEST/usr/share/icons/hicolor/scalable/apps/$APP_ID.svg"
-for size in 16 24 32 48 64 128 256 512; do
+for size in $ICON_SIZES; do
     install -Dm644 "$BUILD/icons/$size.png" \
         "$DEST/usr/share/icons/hicolor/${size}x${size}/apps/$APP_ID.png"
 done

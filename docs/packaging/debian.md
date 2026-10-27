@@ -101,7 +101,12 @@ dpkg-deb --contents "$deb" > /tmp/contents.txt
 grep -q 'usr/bin/mihomo-manifold' /tmp/contents.txt
 grep -q 'usr/lib/mihomo-manifold/mihomo$' /tmp/contents.txt
 grep -q 'usr/share/applications/io.github.cublae.MihomoManifold.desktop' /tmp/contents.txt
-test "$(grep -c 'hicolor/[0-9]*x[0-9]*/apps/io.github.cublae.MihomoManifold.png' /tmp/contents.txt)" -eq 8
+# One PNG per entry in ICON_SIZES. Check the sizes the script names rather than
+# a count, so adding a size does not require editing this snippet.
+for size in $(sed -n 's/^ICON_SIZES="\(.*\)"$/\1/p' packaging/build-deb.sh); do
+    grep -q "hicolor/${size}x${size}/apps/io.github.cublae.MihomoManifold.png" /tmp/contents.txt
+    echo "icon ${size}x${size}: ok"
+done
 ```
 
 Then install it and check the wrapper resolves the bundled core:

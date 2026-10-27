@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  Placeholder icon for MihomoManifold. Replace freely — nothing in the build
-  depends on the artwork, only on the file name matching the application ID.
-
-  The motif is a single inbound splitting into several routes, which is what
-  the app is about. Drawn on a 128 grid with flat shapes so it stays legible
-  at 16px and has no gradients that turn to mud when scaled down.
--->
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!--
+    Placeholder icon for MihomoManifold. Replace freely — nothing in the build
+    depends on the artwork, only on the file name matching the application ID.
+
+    The motif is a single inbound splitting into several routes, which is what
+    the app is about. Drawn on a 128 grid with flat shapes so it stays legible
+    at 16px and has no gradients that turn to mud when scaled down.
+
+    NOTE: keep this comment *after* the <svg> start tag. gdk-pixbuf sniffs the
+    first 256 bytes to decide whether a file is an SVG at all, so a long header
+    comment pushes "<svg" out of the window and the icon is silently dropped
+    ("Could not load a pixbuf from icon theme"). That is exactly what happened
+    on a 1.666x fractional-scale display, where the shell asks for a 96px icon,
+    finds only the scalable SVG, and gets nothing back.
+  -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#3a7bd5"/>
