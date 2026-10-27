@@ -1,5 +1,14 @@
+# Rust build output.
 /target
+
+# Packaging output. build-deb.sh stages everything here: the .deb, the rendered
+# icons under .build/icons, and the pinned core it downloads. Never commit any
+# of it — the core alone is 60 MB.
 /result
 /result-*
 /.build
 *.deb
+
+# Written at the repo root by the payload assertions in the build workflow and
+# by the same checks when reproduced locally (docs/packaging/debian.md).
+package-contents.txt
