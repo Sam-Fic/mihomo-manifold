@@ -55,16 +55,16 @@ pub fn build_window(app: &adw::Application) {
         "network-workgroup-symbolic",
     );
     add_page(
-        routing::page(&state),
-        "routing",
-        "Routing",
-        "document-properties-symbolic",
-    );
-    add_page(
         subscriptions::page(&state),
         "subscriptions",
         "Subscriptions",
         "folder-download-symbolic",
+    );
+    add_page(
+        routing::page(&state),
+        "routing",
+        "Routing",
+        "document-properties-symbolic",
     );
     add_page(
         logs::page(&state),
