@@ -1,6 +1,6 @@
 [package]
 name = "mihomo-manifold"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "GTK4 GUI for the mihomo proxy core with subscriptions, HWID and split routing"
 license = "GPL-3.0-or-later"
