@@ -4,39 +4,78 @@
     Placeholder icon for MihomoManifold. Replace freely — nothing in the build
     depends on the artwork, only on the file name matching the application ID.
 
-    The motif is a single inbound splitting into several routes, which is what
-    the app is about. Drawn on a 128 grid with flat shapes so it stays legible
-    at 16px and has no gradients that turn to mud when scaled down.
+    The motif is one hub splitting into three routes. Three equal hollow circles
+    joined by three equal-length lines (the angle between the two lower lines is
+    100deg for visual balance).
+
+    Background: green two-tone split circle (light #33d17a over dark gradient).
+
+    Shadows (same blur softness, but larger source area than the visible shapes):
+      - the lines cast a grey shadow (#c0bfbc) — only in the routes region;
+      - the rings cast a larger green shadow (#26a269) on the background only,
+        masked away wherever the three routes pass, so the two never overlap.
 
     NOTE: keep this comment *after* the <svg> start tag. gdk-pixbuf sniffs the
     first 256 bytes to decide whether a file is an SVG at all, so a long header
-    comment pushes "<svg" out of the window and the icon is silently dropped
-    ("Could not load a pixbuf from icon theme"). That is exactly what happened
-    on a 1.666x fractional-scale display, where the shell asks for a 96px icon,
-    finds only the scalable SVG, and gets nothing back.
+    comment pushes "<svg" out of the window and the icon is silently dropped.
   -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3a7bd5"/>
-      <stop offset="1" stop-color="#1a4f8f"/>
+    <linearGradient id="dg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#26a269"/>
+      <stop offset="1" stop-color="#1a7d4f"/>
     </linearGradient>
+    <filter id="shGrey" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#c0bfbc" flood-opacity="0.45"/>
+    </filter>
+    <filter id="shGreen" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#26a269" flood-opacity="0.45"/>
+    </filter>
+    <!-- White = keep green shadow, black = erase it (the three routes). -->
+    <mask id="bgMask">
+      <rect x="0" y="0" width="128" height="128" fill="#ffffff"/>
+      <g fill="none" stroke="#000000" stroke-width="15" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M64 62 L64 29"/>
+        <path d="M64 62 L89.28 83.21"/>
+        <path d="M64 62 L38.72 83.21"/>
+      </g>
+    </mask>
   </defs>
 
-  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
-
-  <!-- The routes themselves. Drawn under the nodes so the joins stay clean. -->
-  <g fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity="0.95">
-    <path d="M64 46 L64 66 L38 84"/>
-    <path d="M64 66 L90 84"/>
+  <!-- Background: green two-tone split circle. -->
+  <g>
+    <circle cx="64" cy="66" r="60" fill="url(#dg)"/>
+    <rect x="4" y="62" width="120" height="4" fill="#1a7d4f"/>
+    <circle cx="64" cy="62" r="60" fill="#33d17a"/>
   </g>
 
-  <!-- Inbound. -->
-  <circle cx="64" cy="34" r="13" fill="#ffffff"/>
-  <circle cx="64" cy="34" r="5.5" fill="#1a4f8f"/>
+  <!-- Green shadow of the rings: cast by enlarged (r=15) circles so the halo is
+       wider, but kept off the routes by the mask. The circles themselves are the
+       bg green, so they stay invisible. -->
+  <g filter="url(#shGreen)" mask="url(#bgMask)">
+    <circle cx="64" cy="29" r="15" fill="#33d17a"/>
+    <circle cx="89.28" cy="83.21" r="15" fill="#33d17a"/>
+    <circle cx="38.72" cy="83.21" r="15" fill="#33d17a"/>
+  </g>
 
-  <!-- Outbound routes. -->
-  <circle cx="38" cy="92" r="11" fill="#ffffff"/>
-  <circle cx="38" cy="92" r="4.5" fill="#1a4f8f"/>
-  <circle cx="90" cy="92" r="11" fill="#ffffff"/>
-  <circle cx="90" cy="92" r="4.5" fill="#1a4f8f"/>
+  <!-- Grey shadow of the routes: cast by wider (stroke 15) lines so the grey
+       band is broader; sits beneath the visible white lines. -->
+  <g fill="none" stroke="#33d17a" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" filter="url(#shGrey)">
+    <path d="M64 62 L64 29"/>
+    <path d="M64 62 L89.28 83.21"/>
+    <path d="M64 62 L38.72 83.21"/>
+  </g>
+
+  <!-- The three routes (visible). Equal length, meet at the upper-circle
+       center (64,62), each end points at a circle center. -->
+  <g fill="none" stroke="#f6f5f4" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity="0.95">
+    <path d="M64 62 L64 29"/>
+    <path d="M64 62 L89.28 83.21"/>
+    <path d="M64 62 L38.72 83.21"/>
+  </g>
+
+  <!-- The three equal hollow nodes (100deg fan at the base). Rings are filled
+       with the bg green so the lines behind them do not show through. -->
+  <circle cx="64" cy="29" r="10" fill="#33d17a" stroke="#f6f5f4" stroke-width="7"/>
+  <circle cx="89.28" cy="83.21" r="10" fill="#33d17a" stroke="#f6f5f4" stroke-width="7"/>
+  <circle cx="38.72" cy="83.21" r="10" fill="#33d17a" stroke="#f6f5f4" stroke-width="7"/>
 </svg>
