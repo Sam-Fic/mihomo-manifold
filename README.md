@@ -1,5 +1,13 @@
 # MihomoManifold
 
+<div align="center">
+  <img src="data/icons/io.github.cublae.MihomoManifold.svg" alt="MihomoManifold" width="128" height="128">
+</div>
+
+[简体中文](README.zh-CN.md)
+
+---
+
 A GTK4/libadwaita front-end for the [mihomo](https://github.com/MetaCubeX/mihomo)
 proxy core, built around three things: subscriptions that carry a device
 identifier, split routing you control, and a core the GUI owns rather than
@@ -222,10 +230,3 @@ core and exits, which pairs well with `mihomo -t -f`:
 ```sh
 mihomo-manifold --print-config > /tmp/c.yaml && mihomo -t -f /tmp/c.yaml
 ```
-
-### A note on icon themes
-
-GTK4 refuses to draw symbolic SVGs whose paths are wrapped in a `<g>` element,
-and several popular third-party icon themes (Tela among them) ship exactly that.
-Primary actions therefore carry a text label next to the icon, so they stay
-usable no matter which icon theme is active.
