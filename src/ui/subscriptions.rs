@@ -256,6 +256,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
             let row = adw::ActionRow::builder()
                 .title(gtk::glib::markup_escape_text(&sub.name))
                 .subtitle(status_line(&sub))
+                .activatable(true)
                 .build();
             if sub.last_error.is_some() {
                 row.add_css_class("error");
@@ -284,6 +285,9 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
                 }
             });
             row.add_prefix(&selector);
+
+            let row_selector = selector.clone();
+            row.connect_activated(move |_| row_selector.set_active(true));
 
             let refresh = widgets::icon_button("view-refresh-symbolic", t("Update now"));
             let refresh_state = state.clone();
