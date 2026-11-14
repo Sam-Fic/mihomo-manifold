@@ -12,3 +12,17 @@
 # Written at the repo root by the payload assertions in the build workflow and
 # by the same checks when reproduced locally (docs/packaging/debian.md).
 package-contents.txt
+
+# IDE / agent internal state (plans, sessions, scratch).
+/.zcode
+
+# Editor and OS cruft.
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Local environment overrides.
+.env
+.env.local
