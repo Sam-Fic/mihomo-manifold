@@ -10,10 +10,13 @@
 
     Background: green two-tone split circle (light #33d17a over dark gradient).
 
-    Shadows (same blur softness, but larger source area than the visible shapes):
-      - the lines cast a grey shadow (#c0bfbc) — only in the routes region;
-      - the rings cast a larger green shadow (#26a269) on the background only,
-        masked away wherever the three routes pass, so the two never overlap.
+    No shadows: the motif sits flat on the two-tone background, with only the
+    #2ec27e outline around the whole motif.
+
+    Selector motif: a thin translucent arc runs through the three node centers
+    (they lie on a r=33 circle around the hub), open at the bottom — the three
+    routes read as positions on a dial. The top node carries a filled dot,
+    like a radio button, marking the one "live" route (the active profile).
 
     NOTE: keep this comment *after* the <svg> start tag. gdk-pixbuf sniffs the
     first 256 bytes to decide whether a file is an SVG at all, so a long header
@@ -24,21 +27,6 @@
       <stop offset="0" stop-color="#26a269"/>
       <stop offset="1" stop-color="#1a7d4f"/>
     </linearGradient>
-    <filter id="shGrey" x="-50%" y="-50%" width="200%" height="200%">
-      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#c0bfbc" flood-opacity="0.45"/>
-    </filter>
-    <filter id="shGreen" x="-50%" y="-50%" width="200%" height="200%">
-      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#26a269" flood-opacity="0.45"/>
-    </filter>
-    <!-- White = keep green shadow, black = erase it (the three routes). -->
-    <mask id="bgMask">
-      <rect x="0" y="0" width="128" height="128" fill="#ffffff"/>
-      <g fill="none" stroke="#000000" stroke-width="15" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M64 62 L64 29"/>
-        <path d="M64 62 L89.28 83.21"/>
-        <path d="M64 62 L38.72 83.21"/>
-      </g>
-    </mask>
   </defs>
 
   <!-- Background: green two-tone split circle. -->
@@ -48,21 +36,20 @@
     <circle cx="64" cy="62" r="60" fill="#33d17a"/>
   </g>
 
-  <!-- Green shadow of the rings: cast by enlarged (r=15) circles so the halo is
-       wider, but kept off the routes by the mask. The circles themselves are the
-       bg green, so they stay invisible. -->
-  <g filter="url(#shGreen)" mask="url(#bgMask)">
-    <circle cx="64" cy="29" r="15" fill="#33d17a"/>
-    <circle cx="89.28" cy="83.21" r="15" fill="#33d17a"/>
-    <circle cx="38.72" cy="83.21" r="15" fill="#33d17a"/>
-  </g>
+  <!-- Selector track: thin translucent arc through the three node centers,
+       open at the bottom; drawn beneath the motif so the nodes interrupt it. -->
+  <path d="M38.72 83.21 A33 33 0 1 1 89.28 83.21" fill="none" stroke="#f6f5f4" stroke-width="4" stroke-linecap="round" opacity="0.5"/>
 
-  <!-- Grey shadow of the routes: cast by wider (stroke 15) lines so the grey
-       band is broader; sits beneath the visible white lines. -->
-  <g fill="none" stroke="#33d17a" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" filter="url(#shGrey)">
+  <!-- Outer outline of the whole motif (three routes + three nodes treated as
+       one silhouette): same geometry, stroke widened from 7 to 12 so the
+       outline extends 2.5px beyond the visible shapes; drawn beneath them. -->
+  <g fill="none" stroke="#2ec27e" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
     <path d="M64 62 L64 29"/>
     <path d="M64 62 L89.28 83.21"/>
     <path d="M64 62 L38.72 83.21"/>
+    <circle cx="64" cy="29" r="10"/>
+    <circle cx="89.28" cy="83.21" r="10"/>
+    <circle cx="38.72" cy="83.21" r="10"/>
   </g>
 
   <!-- The three routes (visible). Equal length, meet at the upper-circle
@@ -78,4 +65,7 @@
   <circle cx="64" cy="29" r="10" fill="#33d17a" stroke="#f6f5f4" stroke-width="7"/>
   <circle cx="89.28" cy="83.21" r="10" fill="#33d17a" stroke="#f6f5f4" stroke-width="7"/>
   <circle cx="38.72" cy="83.21" r="10" fill="#33d17a" stroke="#f6f5f4" stroke-width="7"/>
+
+  <!-- The "live" node: filled dot inside the top ring, radio-button style. -->
+  <circle cx="64" cy="29" r="4.5" fill="#f6f5f4"/>
 </svg>
