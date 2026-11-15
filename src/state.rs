@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::api::ClashApi;
-use crate::config::AppConfig;
+use crate::config::{AppConfig, GroupKind};
 use crate::corectl::{self as core, CoreStatus};
 use crate::i18n::{t, tf};
 use crate::{paths, runtime, subscription, sysproxy, template};
@@ -155,6 +155,9 @@ pub fn apply(state: &Rc<AppState>) {
                         // it only redraws when the status itself changed, and a
                         // reload leaves the core exactly as running as it was.
                         state.notify();
+                        if state.config.borrow().core.auto_test_on_apply {
+                            auto_test(&state);
+                        }
                     }
                     Err(err) => state.toast(&tf("Reload failed: {}", &[&err])),
                 }
@@ -209,6 +212,9 @@ pub fn apply(state: &Rc<AppState>) {
                 state.notify();
                 // A node picked while the core was down has never reached it.
                 replay_selections(&state);
+                if state.config.borrow().core.auto_test_on_start {
+                    auto_test(&state);
+                }
             }
             Err(err) => {
                 let tail = core::tail_log(12);
@@ -409,6 +415,55 @@ fn replay_selections(state: &Rc<AppState>) {
 /// one to the controller.
 pub const TEST_URL: &str = "https://cp.cloudflare.com/generate_204";
 pub const TEST_TIMEOUT_MS: u32 = 3000;
+
+/// The group automatic tests measure: the first selector in the routing config,
+/// which is where user traffic ends up unless a rule says otherwise.
+fn active_selector_group(state: &Rc<AppState>) -> Option<String> {
+    state
+        .config
+        .borrow()
+        .routing
+        .groups
+        .iter()
+        .find(|spec| spec.kind == GroupKind::Select)
+        .map(|spec| spec.name.clone())
+}
+
+/// Measure the active selector group through a temporary core, for the same
+/// triggers as [`auto_test`] but with the real core stopped.
+pub fn auto_test_offline(state: &Rc<AppState>) {
+    if let Some(group) = active_selector_group(state) {
+        test_group_offline(state, &group);
+    }
+}
+
+/// Measure the active selector group through the running core, without any of
+/// the ceremony of the manual button: no toast on success or failure, the node
+/// list simply refreshes when the answers come back. Runs after the core came
+/// up or the config was reloaded, when the old delays may be stale.
+fn auto_test(state: &Rc<AppState>) {
+    if state.testing.borrow().is_some() {
+        return;
+    }
+    let Some(api) = state.api() else { return };
+    let Some(group) = active_selector_group(state) else { return };
+
+    *state.testing.borrow_mut() = Some(group.clone());
+    state.notify();
+
+    let state = state.clone();
+    runtime::spawn(
+        async move {
+            api.group_delay(&group, TEST_URL, TEST_TIMEOUT_MS)
+                .await
+                .map_err(|e| e.to_string())
+        },
+        move |_| {
+            *state.testing.borrow_mut() = None;
+            state.notify();
+        },
+    );
+}
 
 /// A port nothing is listening on right now. It is bound and released, so there
 /// is a brief race — the alternative is handing the core a socket we hold.

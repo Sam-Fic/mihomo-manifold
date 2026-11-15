@@ -58,6 +58,10 @@ pub struct CoreSettings {
     pub bypass_private: bool,
     /// Start the core as soon as the GUI opens.
     pub autostart_core: bool,
+    /// Run a latency test on the active selector group once the core is up.
+    pub auto_test_on_start: bool,
+    /// Run a latency test after a subscription switch or config reload.
+    pub auto_test_on_apply: bool,
 }
 
 impl Default for CoreSettings {
@@ -78,6 +82,8 @@ impl Default for CoreSettings {
             set_system_proxy: false,
             bypass_private: true,
             autostart_core: false,
+            auto_test_on_start: true,
+            auto_test_on_apply: true,
         }
     }
 }

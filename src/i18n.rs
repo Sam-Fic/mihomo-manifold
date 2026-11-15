@@ -375,6 +375,16 @@ const ZH: &[(&str, &str)] = &[
     ("Let other machines use this proxy port", "允许局域网内其他设备使用该代理端口"),
     ("IPv6", "IPv6"),
     ("Start the core when the app opens", "应用启动时自动启动内核"),
+    ("Automatic latency test", "自动延迟测试"),
+    (
+        "Tests the active selector group silently; results appear in the node list.",
+        "静默测试当前使用的 Selector 组，结果直接显示在节点列表中。",
+    ),
+    ("Test after the core starts", "内核启动后自动测试"),
+    (
+        "Test after a subscription or configuration change",
+        "订阅或配置变更后自动测试",
+    ),
     ("Start on login", "开机自启"),
     (
         "Launch MihomoManifold when you log in to the desktop",

@@ -346,6 +346,43 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         core_group.add(&on_login);
         content.append(&core_group);
 
+        // ------------------------------------------------- automatic test
+        let auto_test_group = adw::PreferencesGroup::builder()
+            .title(t("Automatic latency test"))
+            .description(t(
+                "Tests the active selector group silently; results appear in the node list.",
+            ))
+            .build();
+
+        let test_on_start = adw::SwitchRow::builder()
+            .title(t("Test after the core starts"))
+            .build();
+        test_on_start.set_active(state.config.borrow().core.auto_test_on_start);
+        let start_state = state.clone();
+        test_on_start.connect_active_notify(move |row| {
+            if start_state.is_refreshing() {
+                return;
+            }
+            start_state.config.borrow_mut().core.auto_test_on_start = row.is_active();
+            start_state.save();
+        });
+        auto_test_group.add(&test_on_start);
+
+        let test_on_apply = adw::SwitchRow::builder()
+            .title(t("Test after a subscription or configuration change"))
+            .build();
+        test_on_apply.set_active(state.config.borrow().core.auto_test_on_apply);
+        let apply_state = state.clone();
+        test_on_apply.connect_active_notify(move |row| {
+            if apply_state.is_refreshing() {
+                return;
+            }
+            apply_state.config.borrow_mut().core.auto_test_on_apply = row.is_active();
+            apply_state.save();
+        });
+        auto_test_group.add(&test_on_apply);
+        content.append(&auto_test_group);
+
         // ---------------------------------------------------------- tun
         let tun_group = adw::PreferencesGroup::builder()
             .title("TUN")

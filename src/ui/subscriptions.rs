@@ -279,9 +279,13 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
                     return;
                 }
                 select_state.config.borrow_mut().active_subscription = Some(select_id.clone());
+                // Cached latencies belong to the previous subscription's nodes.
+                select_state.delays.borrow_mut().clear();
                 select_state.commit();
                 if select_state.is_running() {
                     state::apply(&select_state);
+                } else if select_state.config.borrow().core.auto_test_on_apply {
+                    state::auto_test_offline(&select_state);
                 }
             });
             row.add_prefix(&selector);
