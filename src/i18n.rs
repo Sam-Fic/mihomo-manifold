@@ -267,6 +267,7 @@ const ZH: &[(&str, &str)] = &[
     ("Executable path", "可执行文件路径"),
     ("Send through", "出口"),
     ("Add application rule", "添加应用规则"),
+    ("Edit application rule", "编辑应用规则"),
     (
         "Enter a process name, for example telegram-desktop.",
         "请输入进程名，例如 telegram-desktop。",
@@ -279,6 +280,7 @@ const ZH: &[(&str, &str)] = &[
     ("Match", "匹配类型"),
     ("Value", "值"),
     ("Add routing rule", "添加分流规则"),
+    ("Edit routing rule", "编辑分流规则"),
     ("Enter a value to match.", "请输入要匹配的值。"),
     ("Rule provider", "规则提供器"),
     (
@@ -290,6 +292,7 @@ const ZH: &[(&str, &str)] = &[
     ("Format", "文件格式"),
     ("Refresh interval (seconds)", "刷新间隔（秒）"),
     ("Add rule provider", "添加规则提供器"),
+    ("Edit rule provider", "编辑规则提供器"),
     ("A provider needs both a name and a URL.", "规则提供器必须同时填写名称和 URL。"),
     ("Rule order", "规则顺序"),
     (

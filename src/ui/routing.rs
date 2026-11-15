@@ -33,7 +33,15 @@ fn installed_apps() -> Vec<(String, String)> {
     apps
 }
 
-fn app_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
+fn app_editor(
+    state: &Rc<AppState>,
+    parent: &impl IsA<gtk::Widget>,
+    existing: Option<(usize, AppRule)>,
+) {
+    let is_new = existing.is_none();
+    let edit_index = existing.as_ref().map(|(index, _)| *index);
+    let current = existing.map(|(_, rule)| rule);
+
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(18)
@@ -86,6 +94,20 @@ fn app_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
     group.add(&target);
     content.append(&group);
 
+    if let Some(rule) = &current {
+        process.set_text(&rule.value);
+        match_by.set_selected(match rule.match_by {
+            AppMatch::Path => 1,
+            AppMatch::Name => 0,
+        });
+        if let Some(pos) = apps.iter().position(|(_, p)| *p == rule.value) {
+            picker.set_selected(pos as u32 + 1);
+        }
+        if let Some(pos) = targets.iter().position(|t| *t == rule.target) {
+            target.set_selected(pos as u32);
+        }
+    }
+
     let picker_process = process.clone();
     let picker_apps = apps.clone();
     picker.connect_selected_notify(move |combo| {
@@ -98,7 +120,15 @@ fn app_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
         }
     });
 
-    let (dialog, confirm) = widgets::form_dialog(t("Add application rule"), t("Add"), &content);
+    let (dialog, confirm) = widgets::form_dialog(
+        if is_new {
+            t("Add application rule")
+        } else {
+            t("Edit application rule")
+        },
+        if is_new { t("Add") } else { t("Save") },
+        &content,
+    );
     let save_state = state.clone();
     let dialog_for_save = dialog.clone();
     let targets_for_save = targets.clone();
@@ -131,7 +161,12 @@ fn app_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
                 .unwrap_or(Target::Direct),
             label,
         };
-        save_state.config.borrow_mut().routing.app_rules.push(rule);
+        let mut cfg = save_state.config.borrow_mut();
+        match edit_index {
+            Some(index) => cfg.routing.app_rules[index] = rule,
+            None => cfg.routing.app_rules.push(rule),
+        }
+        drop(cfg);
         save_state.commit();
         dialog_for_save.close();
     });
@@ -139,7 +174,15 @@ fn app_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
     dialog.present(Some(parent.as_ref()));
 }
 
-fn domain_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
+fn domain_editor(
+    state: &Rc<AppState>,
+    parent: &impl IsA<gtk::Widget>,
+    existing: Option<(usize, DomainRule)>,
+) {
+    let is_new = existing.is_none();
+    let edit_index = existing.as_ref().map(|(index, _)| *index);
+    let current = existing.map(|(_, rule)| rule);
+
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(18)
@@ -176,12 +219,33 @@ fn domain_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
     group.add(&target);
     content.append(&group);
 
+    if let Some(rule) = &current {
+        kind.set_selected(
+            MatchKind::ALL
+                .iter()
+                .position(|k| *k == rule.kind)
+                .unwrap_or(1) as u32,
+        );
+        value.set_text(&rule.value);
+        if let Some(pos) = targets.iter().position(|t| *t == rule.target) {
+            target.set_selected(pos as u32);
+        }
+    }
+
     let hint = widgets::dim_label(
         "Examples: DOMAIN-SUFFIX github.com · GEOIP RU · GEOSITE category-ads-all · IP-CIDR 10.0.0.0/8 · DST-PORT 25",
     );
     content.append(&hint);
 
-    let (dialog, confirm) = widgets::form_dialog(t("Add routing rule"), t("Add"), &content);
+    let (dialog, confirm) = widgets::form_dialog(
+        if is_new {
+            t("Add routing rule")
+        } else {
+            t("Edit routing rule")
+        },
+        if is_new { t("Add") } else { t("Save") },
+        &content,
+    );
     let save_state = state.clone();
     let dialog_for_save = dialog.clone();
     confirm.connect_clicked(move |_| {
@@ -199,12 +263,13 @@ fn domain_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
                 .cloned()
                 .unwrap_or(Target::Direct),
         };
-        save_state
-            .config
-            .borrow_mut()
-            .routing
-            .domain_rules
-            .push(rule);
+        {
+            let mut cfg = save_state.config.borrow_mut();
+            match edit_index {
+                Some(index) => cfg.routing.domain_rules[index] = rule,
+                None => cfg.routing.domain_rules.push(rule),
+            }
+        }
         save_state.commit();
         dialog_for_save.close();
     });
@@ -212,7 +277,15 @@ fn domain_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
     dialog.present(Some(parent.as_ref()));
 }
 
-fn provider_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
+fn provider_editor(
+    state: &Rc<AppState>,
+    parent: &impl IsA<gtk::Widget>,
+    existing: Option<(usize, RuleProvider)>,
+) {
+    let is_new = existing.is_none();
+    let edit_index = existing.as_ref().map(|(index, _)| *index);
+    let current = existing.map(|(_, provider)| provider);
+
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(18)
@@ -259,7 +332,36 @@ fn provider_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
     group.add(&target);
     content.append(&group);
 
-    let (dialog, confirm) = widgets::form_dialog(t("Add rule provider"), t("Add"), &content);
+    if let Some(provider) = &current {
+        name.set_text(&provider.name);
+        url.set_text(&provider.url);
+        if let Some(pos) = ["domain", "ipcidr", "classical"]
+            .iter()
+            .position(|b| *b == provider.behavior)
+        {
+            behavior.set_selected(pos as u32);
+        }
+        if let Some(pos) = ["yaml", "text", "mrs"]
+            .iter()
+            .position(|f| *f == provider.format)
+        {
+            format.set_selected(pos as u32);
+        }
+        interval.set_value(provider.interval as f64);
+        if let Some(pos) = targets.iter().position(|t| *t == provider.target) {
+            target.set_selected(pos as u32);
+        }
+    }
+
+    let (dialog, confirm) = widgets::form_dialog(
+        if is_new {
+            t("Add rule provider")
+        } else {
+            t("Edit rule provider")
+        },
+        if is_new { t("Add") } else { t("Save") },
+        &content,
+    );
     let save_state = state.clone();
     let dialog_for_save = dialog.clone();
     confirm.connect_clicked(move |_| {
@@ -282,12 +384,13 @@ fn provider_editor(state: &Rc<AppState>, parent: &impl IsA<gtk::Widget>) {
                 .cloned()
                 .unwrap_or(Target::Direct),
         };
-        save_state
-            .config
-            .borrow_mut()
-            .routing
-            .rule_providers
-            .push(provider);
+        {
+            let mut cfg = save_state.config.borrow_mut();
+            match edit_index {
+                Some(index) => cfg.routing.rule_providers[index] = provider,
+                None => cfg.routing.rule_providers.push(provider),
+            }
+        }
         save_state.commit();
         dialog_for_save.close();
     });
@@ -351,7 +454,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         let add_app = widgets::action_button("list-add-symbolic", t("Add"));
         let add_app_state = state.clone();
         let add_app_anchor = content.clone();
-        add_app.connect_clicked(move |_| app_editor(&add_app_state, &add_app_anchor));
+        add_app.connect_clicked(move |_| app_editor(&add_app_state, &add_app_anchor, None));
         apps_group.set_header_suffix(Some(&add_app));
 
         let app_rules = state.config.borrow().routing.app_rules.clone();
@@ -377,7 +480,14 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
                     AppMatch::Name => format!("PROCESS-NAME {}", rule.value),
                     AppMatch::Path => format!("PROCESS-PATH {}", rule.value),
                 })
+                .activatable(true)
                 .build();
+            let edit_state = state.clone();
+            let edit_anchor = content.clone();
+            let edit_rule = (index, rule.clone());
+            row.connect_activated(move |_| {
+                app_editor(&edit_state, &edit_anchor, Some(edit_rule.clone()))
+            });
 
             let dropdown = widgets::target_dropdown(&targets, &rule.target);
             let dropdown_state = state.clone();
@@ -423,7 +533,9 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         let add_domain = widgets::action_button("list-add-symbolic", t("Add"));
         let add_domain_state = state.clone();
         let add_domain_anchor = content.clone();
-        add_domain.connect_clicked(move |_| domain_editor(&add_domain_state, &add_domain_anchor));
+        add_domain.connect_clicked(move |_| {
+            domain_editor(&add_domain_state, &add_domain_anchor, None)
+        });
         domains_group.set_header_suffix(Some(&add_domain));
 
         let domain_rules = state.config.borrow().routing.domain_rules.clone();
@@ -441,7 +553,14 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
             let row = adw::ActionRow::builder()
                 .title(gtk::glib::markup_escape_text(&rule.value))
                 .subtitle(rule.kind.as_rule_kind())
+                .activatable(true)
                 .build();
+            let edit_state = state.clone();
+            let edit_anchor = content.clone();
+            let edit_rule = (index, rule.clone());
+            row.connect_activated(move |_| {
+                domain_editor(&edit_state, &edit_anchor, Some(edit_rule.clone()))
+            });
 
             let dropdown = widgets::target_dropdown(&targets, &rule.target);
             let dropdown_state = state.clone();
@@ -491,7 +610,9 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         let add_provider_state = state.clone();
         let add_provider_anchor = content.clone();
         add_provider
-            .connect_clicked(move |_| provider_editor(&add_provider_state, &add_provider_anchor));
+            .connect_clicked(move |_| {
+                provider_editor(&add_provider_state, &add_provider_anchor, None)
+            });
         providers_group.set_header_suffix(Some(&add_provider));
 
         let providers = state.config.borrow().routing.rule_providers.clone();
@@ -504,7 +625,14 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
                     provider.url,
                     provider.target.label()
                 ))
+                .activatable(true)
                 .build();
+            let edit_state = state.clone();
+            let edit_anchor = content.clone();
+            let edit_provider = (index, provider.clone());
+            row.connect_activated(move |_| {
+                provider_editor(&edit_state, &edit_anchor, Some(edit_provider.clone()))
+            });
             let remove = widgets::icon_button("user-trash-symbolic", t("Remove"));
             let remove_state = state.clone();
             remove.connect_clicked(move |_| {

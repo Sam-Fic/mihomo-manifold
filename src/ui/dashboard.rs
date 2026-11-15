@@ -125,8 +125,15 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
     let status_row = adw::ActionRow::builder()
         .title(t("Stopped"))
         .subtitle(t("The proxy core is not running"))
+        .activatable(true)
         .build();
     status_row.add_suffix(&power);
+    {
+        let row_power = power.clone();
+        status_row.connect_activated(move |_| {
+            row_power.set_active(!row_power.is_active())
+        });
+    }
     status_group.add(&status_row);
 
     let profile_row = adw::ActionRow::builder()
@@ -146,10 +153,24 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         .build();
     status_group.add(&mode_picker);
 
-    let proxy_row = adw::ActionRow::builder().title(t("Proxy address")).build();
+    let proxy_row = adw::ActionRow::builder()
+        .title(t("Proxy address"))
+        .activatable(true)
+        .build();
     proxy_row.add_css_class("property");
     let copy_proxy = widgets::icon_button("edit-copy-symbolic", t("Copy"));
     proxy_row.add_suffix(&copy_proxy);
+    {
+        let copy_row_state = state.clone();
+        proxy_row.connect_activated(move |row| {
+            let address = format!(
+                "127.0.0.1:{}",
+                copy_row_state.config.borrow().core.mixed_port
+            );
+            widgets::copy_to_clipboard(row, &address);
+            copy_row_state.toast(t("Proxy address copied"));
+        });
+    }
     status_group.add(&proxy_row);
 
     let mode_row = adw::ActionRow::builder()

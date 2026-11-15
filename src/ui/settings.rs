@@ -519,6 +519,7 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
         let value_row = adw::ActionRow::builder()
             .title(t("Current HWID"))
             .subtitle(&value)
+            .activatable(true)
             .build();
         value_row.add_css_class("property");
         let copy = widgets::icon_button("edit-copy-symbolic", t("Copy"));
@@ -529,6 +530,14 @@ pub fn page(state: &Rc<AppState>) -> gtk::Widget {
             copy_state.toast(t("HWID copied"));
         });
         value_row.add_suffix(&copy);
+        {
+            let row_value = value.clone();
+            let row_state = state.clone();
+            value_row.connect_activated(move |row| {
+                widgets::copy_to_clipboard(row, &row_value);
+                row_state.toast(t("HWID copied"));
+            });
+        }
         identity_group.add(&value_row);
 
         if state.config.borrow().hwid.mode == HwidMode::Manual {
